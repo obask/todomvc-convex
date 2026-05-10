@@ -6,7 +6,8 @@ type TodoRow = {
   completed: boolean
 }
 
-const connectionString = process.env.POSTGRES_URL
+const env = getRuntimeEnv()
+const connectionString = env.POSTGRES_URL
 const sql = connectionString ? postgres(connectionString) : null
 
 export default {
@@ -120,7 +121,7 @@ async function deleteCompletedTodos() {
 }
 
 async function resolveUserId() {
-  if (process.env.TODO_USER_ID) return process.env.TODO_USER_ID
+  if (env.TODO_USER_ID) return env.TODO_USER_ID
 
   const database = getSql()
   const [todo] = await database<{ user_id: string }[]>`
@@ -136,6 +137,15 @@ function getSql() {
   }
 
   return sql
+}
+
+function getRuntimeEnv() {
+  const runtime = globalThis as typeof globalThis & {
+    Bun?: { env?: Record<string, string | undefined> }
+    process?: { env?: Record<string, string | undefined> }
+  }
+
+  return runtime.Bun?.env ?? runtime.process?.env ?? {}
 }
 
 async function readBody(request: Request) {
