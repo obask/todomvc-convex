@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { attachDatabasePool } from '@vercel/functions'
 import { Pool } from 'pg'
 
 type TodoRow = {
@@ -10,6 +11,7 @@ type TodoRow = {
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
 })
+attachDatabasePool(pool)
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!process.env.POSTGRES_URL) {
