@@ -1,6 +1,6 @@
-import { attachDatabasePool } from '@vercel/functions'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { Pool } from 'pg'
+import { auth } from './lib/auth.js'
+import { hasDatabaseConfig, pool } from './lib/db.js'
 
 type TodoRow = {
   id: string
@@ -14,17 +14,12 @@ type AuthSession = {
   } | null
 }
 
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
-})
-attachDatabasePool(pool)
-
 const SESSION_TTL_MS = 30_000
 const sessionCache = new Map<string, { userId: string; expiresAt: number }>()
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  if (!process.env.POSTGRES_URL) {
-    res.status(500).json({ error: 'POSTGRES_URL is not configured' })
+  if (!hasDatabaseConfig()) {
+    res.status(500).json({ error: 'POSTGRES_URL or DATABASE_URL is not configured' })
     return
   }
 
@@ -94,22 +89,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 }
 
 async function requireUserId(req: VercelRequest): Promise<string> {
-  const authBaseUrl = process.env.NEON_AUTH_BASE_URL
-  if (!authBaseUrl) throw new Error('NEON_AUTH_BASE_URL is not configured')
-
   const cookie = readCookieHeader(req)
   if (!cookie) throw new Error('Unauthorized')
 
   const cached = sessionCache.get(cookie)
   if (cached && cached.expiresAt > Date.now()) return cached.userId
 
-  const upstream = await fetch(toAuthUrl(authBaseUrl, 'get-session'), {
-    headers: { cookie },
-  })
-
-  if (!upstream.ok) throw new Error('Unauthorized')
-
-  const session = (await upstream.json().catch(() => null)) as AuthSession | null
+  const session = (await auth.api.getSession({
+    headers: toHeaders(req.headers),
+    query: { disableRefresh: true },
+  })) as AuthSession | null
   const userId = session?.user?.id
   if (!userId) throw new Error('Unauthorized')
 
@@ -123,13 +112,21 @@ function readCookieHeader(req: VercelRequest): string {
   return value ?? ''
 }
 
-function toAuthUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
-}
-
 function toRequestUrl(req: VercelRequest): URL {
   const host = (req.headers.host as string | undefined) ?? 'localhost'
   return new URL(req.url ?? '/', `http://${host}`)
+}
+
+function toHeaders(source: VercelRequest['headers']): Headers {
+  const headers = new Headers()
+  for (const [name, value] of Object.entries(source)) {
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(name, item)
+    } else if (value !== undefined) {
+      headers.set(name, value)
+    }
+  }
+  return headers
 }
 
 async function listTodos(userId: string) {

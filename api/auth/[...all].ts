@@ -1,61 +1,28 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-
-const baseUrl = process.env.NEON_AUTH_BASE_URL
+import { auth } from '../lib/auth.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  if (!baseUrl) {
-    res.status(500).json({ error: 'NEON_AUTH_BASE_URL is not configured' })
-    return
-  }
+  const authRequest = new Request(toAuthUrl(req), {
+    method: req.method,
+    headers: toHeaders(req.headers),
+    body: toRequestBody(await readRequestBody(req)),
+  })
+  const authResponse = await auth.handler(authRequest)
 
-  const incoming = toRequestUrl(req)
-  const subpath = incoming.pathname.replace(/^\/api\/auth\/?/, '')
-  const search = stripCatchAllParam(incoming.searchParams, subpath)
-  const upstreamUrl = `${baseUrl.replace(/\/$/, '')}/${subpath}${search}`
-
-  const headers = toHeaders(req.headers)
-  headers.delete('host')
-  headers.delete('content-length')
-  headers.delete('connection')
-  headers.delete('accept-encoding')
-  headers.delete('x-forwarded-for')
-  headers.delete('x-forwarded-host')
-  headers.delete('x-forwarded-port')
-  headers.delete('x-forwarded-proto')
-
-  const body = await readRequestBody(req)
-  if (body !== undefined) {
-    headers.set('content-length', String(Buffer.byteLength(body)))
-  }
-
-  let upstream: Response
-  try {
-    upstream = await fetch(upstreamUrl, {
-      method: req.method,
-      headers,
-      body: body ? new Uint8Array(body) : undefined,
-      redirect: 'manual',
-    })
-  } catch (error) {
-    console.error('[auth-proxy] upstream fetch failed', error)
-    res.status(502).json({ error: 'Auth upstream unreachable' })
-    return
-  }
-
-  upstream.headers.forEach((value, name) => {
+  authResponse.headers.forEach((value, name) => {
     if (name === 'set-cookie' || name === 'content-encoding' || name === 'content-length' || name === 'transfer-encoding') {
       return
     }
     res.setHeader(name, value)
   })
 
-  const setCookies = upstream.headers.getSetCookie?.().map(rewriteCookie) ?? []
+  const setCookies = authResponse.headers.getSetCookie?.() ?? []
   if (setCookies.length > 0) {
     res.setHeader('set-cookie', setCookies)
   }
 
-  const responseBody = Buffer.from(await upstream.arrayBuffer())
-  res.status(upstream.status).send(responseBody)
+  const responseBody = Buffer.from(await authResponse.arrayBuffer())
+  res.status(authResponse.status).send(responseBody)
 }
 
 async function readRequestBody(req: VercelRequest): Promise<Buffer | undefined> {
@@ -75,6 +42,17 @@ async function readRequestBody(req: VercelRequest): Promise<Buffer | undefined> 
   return buffer.length > 0 ? buffer : undefined
 }
 
+function toRequestBody(body: Buffer | undefined): BodyInit | undefined {
+  return body ? new Uint8Array(body) : undefined
+}
+
+function toAuthUrl(req: VercelRequest): string {
+  const incoming = toRequestUrl(req)
+  const subpath = incoming.pathname.replace(/^\/api\/auth\/?/, '')
+  incoming.search = stripCatchAllParam(incoming.searchParams, subpath)
+  return incoming.toString()
+}
+
 function stripCatchAllParam(params: URLSearchParams, subpath: string): string {
   const next = new URLSearchParams(params)
   // Vercel sometimes echoes the catch-all into query params (`all`); drop it
@@ -86,13 +64,13 @@ function stripCatchAllParam(params: URLSearchParams, subpath: string): string {
       next.delete(key)
     }
   }
-  const serialized = next.toString()
-  return serialized ? `?${serialized}` : ''
+  return next.toString()
 }
 
 function toRequestUrl(req: VercelRequest): URL {
-  const host = (req.headers.host as string | undefined) ?? 'localhost'
-  return new URL(req.url ?? '/', `http://${host}`)
+  const host = readHeader(req.headers.host) ?? 'localhost'
+  const proto = readHeader(req.headers['x-forwarded-proto']) ?? 'http'
+  return new URL(req.url ?? '/', `${proto}://${host}`)
 }
 
 function toHeaders(source: VercelRequest['headers']): Headers {
@@ -104,13 +82,11 @@ function toHeaders(source: VercelRequest['headers']): Headers {
       headers.set(name, value)
     }
   }
+  headers.delete('connection')
+  headers.delete('content-length')
   return headers
 }
 
-function rewriteCookie(cookie: string): string {
-  return cookie
-    .split(';')
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0 && !/^domain=/i.test(part))
-    .join('; ')
+function readHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
 }
