@@ -1,4 +1,5 @@
-import postgres from 'postgres'
+import { SQL } from 'bun'
+import { attachDatabasePool } from '@vercel/functions'
 
 type TodoRow = {
   id: string
@@ -6,9 +7,18 @@ type TodoRow = {
   completed: boolean
 }
 
-const env = getRuntimeEnv()
+const env = Bun.env
 const connectionString = env.POSTGRES_URL
-const sql = connectionString ? postgres(connectionString) : null
+const sql = connectionString
+  ? new SQL({
+      url: connectionString,
+      idleTimeout: readPositiveNumber(env.POSTGRES_IDLE_TIMEOUT, 5),
+      max: readPositiveNumber(env.POSTGRES_MAX_CONNECTIONS, 5),
+      maxLifetime: readPositiveNumber(env.POSTGRES_MAX_LIFETIME, 60 * 30),
+    })
+  : null
+
+if (sql) attachDatabasePool(sql)
 
 export default {
   async fetch(request: Request) {
@@ -79,33 +89,34 @@ export default {
 
 async function listTodos() {
   const database = getSql()
-
-  return database<TodoRow[]>`
+  const rows = (await database`
     select id, text, completed
     from todo
     order by created_at asc, id asc
-  `
+  `) as TodoRow[]
+
+  return rows
 }
 
 async function createTodo(text: string, userId: string) {
   const database = getSql()
-  const [todo] = await database<TodoRow[]>`
+  const [todo] = (await database`
     insert into todo (text, user_id)
     values (${text}, ${userId})
     returning id, text, completed
-  `
+  `) as TodoRow[]
 
   return todo
 }
 
 async function updateTodo(id: string, completed: boolean) {
   const database = getSql()
-  const [todo] = await database<TodoRow[]>`
+  const [todo] = (await database`
     update todo
     set completed = ${completed}, updated_at = now()
     where id = ${id}
     returning id, text, completed
-  `
+  `) as TodoRow[]
 
   return todo ?? null
 }
@@ -124,9 +135,9 @@ async function resolveUserId() {
   if (env.TODO_USER_ID) return env.TODO_USER_ID
 
   const database = getSql()
-  const [todo] = await database<{ user_id: string }[]>`
+  const [todo] = (await database`
     select user_id from todo order by created_at asc limit 1
-  `
+  `) as { user_id: string }[]
 
   return todo?.user_id ?? 'local'
 }
@@ -139,13 +150,11 @@ function getSql() {
   return sql
 }
 
-function getRuntimeEnv() {
-  const runtime = globalThis as typeof globalThis & {
-    Bun?: { env?: Record<string, string | undefined> }
-    process?: { env?: Record<string, string | undefined> }
-  }
+function readPositiveNumber(value: string | undefined, fallback: number) {
+  if (!value) return fallback
 
-  return runtime.Bun?.env ?? runtime.process?.env ?? {}
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 async function readBody(request: Request) {
