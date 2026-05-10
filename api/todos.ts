@@ -1,5 +1,6 @@
 import { SQL } from 'bun'
 import { attachDatabasePool } from '@vercel/functions'
+import { Elysia, status, t } from 'elysia'
 
 type TodoRow = {
   id: string
@@ -18,73 +19,135 @@ const sql = connectionString
     })
   : null
 
-if (sql) attachDatabasePool(sql)
+if (sql) {
+  try {
+    attachDatabasePool(sql)
+  } catch (error) {
+    if (
+      !(error instanceof Error && error.message === 'Unsupported database pool type')
+    ) {
+      throw error
+    }
+  }
+}
+
+const errorResponse = t.Object({
+  error: t.String(),
+})
+
+const todoSchema = t.Object({
+  id: t.String(),
+  text: t.String(),
+  completed: t.Boolean(),
+})
+
+export const app = new Elysia({ prefix: '/api/todos' })
+  .onError(({ code, error, set }) => {
+    if (code === 'VALIDATION') {
+      set.status = 400
+      return { error: 'Invalid todo request' }
+    }
+
+    if (code === 'NOT_FOUND') {
+      set.status = 404
+      return { error: 'Not found' }
+    }
+
+    if (error instanceof Error && error.message === 'POSTGRES_URL is not configured') {
+      set.status = 500
+      return { error: error.message }
+    }
+
+    console.error(error)
+    set.status = 500
+    return { error: 'Unable to process todos' }
+  })
+  .get(
+    '/',
+    async () => {
+      const todos = await listTodos()
+      return { todos }
+    },
+    {
+      response: {
+        200: t.Object({ todos: t.Array(todoSchema) }),
+        500: errorResponse,
+      },
+    },
+  )
+  .post(
+    '/',
+    async ({ body }) => {
+      const text = body.text.trim()
+      if (!text) {
+        return status(400, { error: 'Todo text is required' })
+      }
+
+      const userId = await resolveUserId()
+      const todo = await createTodo(text, userId)
+      return status(201, { todo })
+    },
+    {
+      body: t.Object({ text: t.String() }),
+      response: {
+        201: t.Object({ todo: todoSchema }),
+        400: errorResponse,
+        500: errorResponse,
+      },
+    },
+  )
+  .patch(
+    '/',
+    async ({ body, query }) => {
+      const todo = await updateTodo(query.id, body.completed)
+      if (!todo) {
+        return status(404, { error: 'Todo not found' })
+      }
+
+      return { todo }
+    },
+    {
+      query: t.Object({ id: t.String({ minLength: 1 }) }),
+      body: t.Object({ completed: t.Boolean() }),
+      response: {
+        200: t.Object({ todo: todoSchema }),
+        404: errorResponse,
+        500: errorResponse,
+      },
+    },
+  )
+  .delete(
+    '/',
+    async ({ query }) => {
+      if (query.id) {
+        await deleteTodo(query.id)
+        return status(204)
+      }
+
+      if (query.completed === 'true') {
+        await deleteCompletedTodos()
+        return status(204)
+      }
+
+      return status(400, { error: 'Todo id or completed=true is required' })
+    },
+    {
+      query: t.Object({
+        id: t.Optional(t.String()),
+        completed: t.Optional(t.String()),
+      }),
+      response: {
+        204: t.Void(),
+        400: errorResponse,
+        500: errorResponse,
+      },
+    },
+  )
+
+export type TodoApp = typeof app
 
 export default {
-  async fetch(request: Request) {
-    if (!sql) {
-      return json({ error: 'POSTGRES_URL is not configured' }, 500)
-    }
-
-    try {
-      const url = new URL(request.url)
-
-      if (request.method === 'GET') {
-        const todos = await listTodos()
-        return json({ todos })
-      }
-
-      if (request.method === 'POST') {
-        const text = readText(await readBody(request))
-        if (!text) {
-          return json({ error: 'Todo text is required' }, 400)
-        }
-
-        const userId = await resolveUserId()
-        const todo = await createTodo(text, userId)
-        return json({ todo }, 201)
-      }
-
-      if (request.method === 'PATCH') {
-        const id = url.searchParams.get('id') ?? ''
-        const completed = readCompleted(await readBody(request))
-        if (!id || completed === null) {
-          return json({ error: 'Todo id and completed state are required' }, 400)
-        }
-
-        const todo = await updateTodo(id, completed)
-        if (!todo) {
-          return json({ error: 'Todo not found' }, 404)
-        }
-
-        return json({ todo })
-      }
-
-      if (request.method === 'DELETE') {
-        const id = url.searchParams.get('id') ?? ''
-        if (id) {
-          await deleteTodo(id)
-          return new Response(null, { status: 204 })
-        }
-
-        if (url.searchParams.get('completed') === 'true') {
-          await deleteCompletedTodos()
-          return new Response(null, { status: 204 })
-        }
-
-        return json({ error: 'Todo id or completed=true is required' }, 400)
-      }
-
-      return json(
-        { error: 'Method not allowed' },
-        405,
-        { Allow: 'GET, POST, PATCH, DELETE' },
-      )
-    } catch (error) {
-      console.error(error)
-      return json({ error: 'Unable to process todos' }, 500)
-    }
-  },
+  fetch: app.handle,
 }
 
 async function listTodos() {
@@ -155,37 +218,4 @@ function readPositiveNumber(value: string | undefined, fallback: number) {
 
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
-}
-
-async function readBody(request: Request) {
-  try {
-    return await request.json()
-  } catch {
-    return null
-  }
-}
-
-function readText(body: unknown) {
-  if (!body || typeof body !== 'object') return ''
-
-  const text = (body as Record<string, unknown>).text
-  return typeof text === 'string' ? text.trim() : ''
-}
-
-function readCompleted(body: unknown) {
-  if (!body || typeof body !== 'object') return null
-
-  const completed = (body as Record<string, unknown>).completed
-  return typeof completed === 'boolean' ? completed : null
-}
-
-function json(
-  body: unknown,
-  status = 200,
-  headers: Record<string, string> = {},
-) {
-  return Response.json(body, {
-    status,
-    headers,
-  })
 }

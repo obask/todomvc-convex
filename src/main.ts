@@ -1,4 +1,6 @@
 import './style.css'
+import { treaty } from '@elysiajs/eden'
+import type { TodoApp } from '../api/todos'
 
 type Todo = {
   id: string
@@ -8,6 +10,7 @@ type Todo = {
 
 let todos: Todo[] = []
 let isSaving = false
+const api = treaty<TodoApp>(window.location.origin).api.todos
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="todo-app" aria-labelledby="app-title">
@@ -58,10 +61,7 @@ form.addEventListener('submit', async (event) => {
   if (!text || isSaving) return
 
   await saveChange(async () => {
-    const todo = await requestTodo<Todo>('/api/todos', {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    })
+    const todo = await readTodo(api.post({ text }))
 
     todos = [...todos, todo]
     input.value = ''
@@ -83,10 +83,12 @@ list.addEventListener('change', async (event) => {
 
   await saveChange(
     async () => {
-      const todo = await requestTodo<Todo>(`/api/todos?id=${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ completed: checkbox.checked }),
-      })
+      const todo = await readTodo(
+        api.patch(
+          { completed: checkbox.checked },
+          { query: { id } },
+        ),
+      )
 
       todos = todos.map((item) => (item.id === todo.id ? todo : item))
     },
@@ -109,9 +111,7 @@ list.addEventListener('click', async (event) => {
 
   await saveChange(
     async () => {
-      await requestJson(`/api/todos?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      })
+      await readEden(api.delete(null, { query: { id } }))
     },
     () => {
       todos = previousTodos
@@ -128,9 +128,7 @@ clearCompleted.addEventListener('click', async () => {
 
   await saveChange(
     async () => {
-      await requestJson('/api/todos?completed=true', {
-        method: 'DELETE',
-      })
+      await readEden(api.delete(null, { query: { completed: 'true' } }))
     },
     () => {
       todos = previousTodos
@@ -142,8 +140,7 @@ async function loadTodos() {
   setError('')
 
   try {
-    const data = await requestJson<{ todos: Todo[] }>('/api/todos')
-    todos = data.todos
+    todos = await readTodos(api.get())
   } catch (error) {
     setError((error as Error).message)
   } finally {
@@ -212,32 +209,59 @@ function createTodoMarkup(todo: Todo) {
   `
 }
 
-async function requestTodo<TodoResponse>(url: string, init?: RequestInit) {
-  const data = await requestJson<{ todo: TodoResponse }>(url, init)
-  return data.todo
-}
-
-async function requestJson<TResponse>(url: string, init?: RequestInit) {
-  const response = await fetch(toApiUrl(url), {
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
-    ...init,
-  })
-
-  if (response.status === 204) return undefined as TResponse
-
-  const data = await response.json()
-  if (!response.ok) {
-    throw new Error(data.error ?? 'Request failed')
+async function readTodo<TResponse extends Promise<{ data: unknown; error: unknown }>>(
+  response: TResponse,
+) {
+  const data = await readEden(response)
+  const todo = data && typeof data === 'object' && 'todo' in data ? data.todo : null
+  if (!isTodo(todo)) {
+    throw new Error('Request failed')
   }
 
-  return data as TResponse
+  return todo
 }
 
-function toApiUrl(path: string) {
-  return new URL(path, window.location.origin).toString()
+async function readTodos<TResponse extends Promise<{ data: unknown; error: unknown }>>(
+  response: TResponse,
+) {
+  const data = await readEden(response)
+  const nextTodos =
+    data && typeof data === 'object' && 'todos' in data ? data.todos : null
+
+  if (!Array.isArray(nextTodos) || !nextTodos.every(isTodo)) {
+    throw new Error('Request failed')
+  }
+
+  return nextTodos
+}
+
+async function readEden<TResponse extends Promise<{ data: unknown; error: unknown }>>(
+  response: TResponse,
+): Promise<NonNullable<Awaited<TResponse>['data']>> {
+  const { data, error } = await response
+  if (error) {
+    const value =
+      typeof error === 'object' && error && 'value' in error ? error.value : null
+
+    if (value && typeof value === 'object' && 'error' in value) {
+      throw new Error(String(value.error))
+    }
+
+    throw new Error('Request failed')
+  }
+
+  return data as NonNullable<Awaited<TResponse>['data']>
+}
+
+function isTodo(value: unknown): value is Todo {
+  if (!value || typeof value !== 'object') return false
+
+  const todo = value as Record<string, unknown>
+  return (
+    typeof todo.id === 'string' &&
+    typeof todo.text === 'string' &&
+    typeof todo.completed === 'boolean'
+  )
 }
 
 function escapeHtml(value: string) {
