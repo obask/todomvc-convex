@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { auth } from './lib/auth.js'
-import { hasDatabaseConfig, pool } from './lib/db.js'
+import { hasDatabaseConfig } from './lib/db.js'
+import { db } from './lib/drizzle.js'
+import { todo } from './lib/schema.js'
 
 type TodoRow = {
   id: string
@@ -16,6 +19,11 @@ type AuthSession = {
 
 const SESSION_TTL_MS = 30_000
 const sessionCache = new Map<string, { userId: string; expiresAt: number }>()
+const todoSelection = {
+  id: todo.id,
+  text: todo.text,
+  completed: todo.completed,
+} satisfies Record<keyof TodoRow, unknown>
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (!hasDatabaseConfig()) {
@@ -130,49 +138,36 @@ function toHeaders(source: VercelRequest['headers']): Headers {
 }
 
 async function listTodos(userId: string) {
-  const { rows } = await pool.query<TodoRow>(
-    `
-      select id, text, completed
-      from todo
-      where user_id = $1
-      order by created_at asc, id asc
-    `,
-    [userId],
-  )
-  return rows
+  return db
+    .select(todoSelection)
+    .from(todo)
+    .where(eq(todo.userId, userId))
+    .orderBy(asc(todo.createdAt), asc(todo.id))
 }
 
 async function createTodo(text: string, userId: string) {
-  const { rows } = await pool.query<TodoRow>(
-    `
-      insert into todo (text, user_id)
-      values ($1, $2)
-      returning id, text, completed
-    `,
-    [text, userId],
-  )
-  return rows[0]
+  const [created] = await db
+    .insert(todo)
+    .values({ text, userId })
+    .returning(todoSelection)
+  return created
 }
 
 async function updateTodo(id: string, completed: boolean, userId: string) {
-  const { rows } = await pool.query<TodoRow>(
-    `
-      update todo
-      set completed = $2, updated_at = now()
-      where id = $1 and user_id = $3
-      returning id, text, completed
-    `,
-    [id, completed, userId],
-  )
-  return rows[0] ?? null
+  const [updated] = await db
+    .update(todo)
+    .set({ completed, updatedAt: sql`now()` })
+    .where(and(eq(todo.id, id), eq(todo.userId, userId)))
+    .returning(todoSelection)
+  return updated ?? null
 }
 
 async function deleteTodo(id: string, userId: string) {
-  await pool.query('delete from todo where id = $1 and user_id = $2', [id, userId])
+  await db.delete(todo).where(and(eq(todo.id, id), eq(todo.userId, userId)))
 }
 
 async function deleteCompletedTodos(userId: string) {
-  await pool.query('delete from todo where completed = true and user_id = $1', [userId])
+  await db.delete(todo).where(and(eq(todo.completed, true), eq(todo.userId, userId)))
 }
 
 async function readJson(req: VercelRequest): Promise<unknown> {
