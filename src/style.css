@@ -59,7 +59,9 @@ button:disabled {
 
 .app-header {
   display: grid;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: end;
+  gap: 18px;
 }
 
 .eyebrow {
@@ -76,6 +78,82 @@ h1 {
   font-size: clamp(2.4rem, 8vw, 4.8rem);
   line-height: 0.95;
   letter-spacing: 0;
+}
+
+.auth-panel {
+  min-width: 0;
+}
+
+.auth-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+
+.auth-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(31, 122, 92, 0.16);
+}
+
+.auth-form button,
+.user-panel button,
+.todo-form button,
+.todo-footer button {
+  min-height: 44px;
+  padding: 0 16px;
+  color: #ffffff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.auth-form button:hover,
+.user-panel button:hover:not(:disabled),
+.todo-form button:hover,
+.todo-footer button:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+.auth-form .secondary-button {
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.auth-form .secondary-button:hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--accent-dark);
+}
+
+.auth-form[hidden],
+.user-panel[hidden] {
+  display: none;
+}
+
+.user-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.user-panel span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .todo-form {
@@ -103,22 +181,6 @@ h1 {
 .todo-form input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(31, 122, 92, 0.16);
-}
-
-.todo-form button,
-.todo-footer button {
-  min-height: 44px;
-  padding: 0 16px;
-  color: #ffffff;
-  background: var(--accent);
-  border: 0;
-  border-radius: 6px;
-  font-weight: 700;
-}
-
-.todo-form button:hover,
-.todo-footer button:hover:not(:disabled) {
-  background: var(--accent-dark);
 }
 
 .todo-panel {
@@ -247,15 +309,27 @@ h1 {
     padding: 32px 14px;
   }
 
+  .app-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
   .todo-form,
   .todo-item,
   .todo-footer {
     grid-template-columns: 1fr;
   }
 
+  .auth-form button,
+  .user-panel button,
   .todo-form button,
   .todo-footer button {
     width: 100%;
+  }
+
+  .user-panel {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .todo-footer {

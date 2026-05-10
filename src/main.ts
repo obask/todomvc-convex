@@ -1,4 +1,5 @@
 import './style.css'
+import { createAuthClient } from 'better-auth/client'
 
 type Todo = {
   id: string
@@ -6,14 +7,59 @@ type Todo = {
   completed: boolean
 }
 
+type SessionUser = {
+  id: string
+  name?: string | null
+  email?: string | null
+}
+
+const authClient = createAuthClient({
+  baseURL: `${window.location.origin}/api/auth`,
+})
+
 let todos: Todo[] = []
+let currentUser: SessionUser | null = null
 let isSaving = false
+let isAuthLoading = false
+let authMode: 'login' | 'signup' = 'login'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="todo-app" aria-labelledby="app-title">
     <header class="app-header">
-      <p class="eyebrow">Postgres list</p>
-      <h1 id="app-title">Todos</h1>
+      <div>
+        <p class="eyebrow">Postgres list</p>
+        <h1 id="app-title">Todos</h1>
+      </div>
+      <div class="auth-panel" aria-live="polite">
+        <form class="auth-form" id="auth-form">
+          <label class="sr-only" for="email-input">Email</label>
+          <input
+            id="email-input"
+            name="email"
+            type="email"
+            placeholder="Email"
+            autocomplete="email"
+            required
+          />
+          <label class="sr-only" for="password-input">Password</label>
+          <input
+            id="password-input"
+            name="password"
+            type="password"
+            placeholder="Password"
+            autocomplete="current-password"
+            required
+          />
+          <button id="auth-submit" type="submit">Log in</button>
+          <button class="secondary-button" id="toggle-auth-mode" type="button">
+            Create account
+          </button>
+        </form>
+        <div class="user-panel" id="user-panel" hidden>
+          <span id="user-label"></span>
+          <button id="sign-out" type="button">Sign out</button>
+        </div>
+      </div>
     </header>
 
     <form class="todo-form" id="todo-form">
@@ -43,13 +89,59 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 `
 
 const form = document.querySelector<HTMLFormElement>('#todo-form')!
+const authForm = document.querySelector<HTMLFormElement>('#auth-form')!
 const input = document.querySelector<HTMLInputElement>('#todo-input')!
+const emailInput = document.querySelector<HTMLInputElement>('#email-input')!
+const passwordInput = document.querySelector<HTMLInputElement>('#password-input')!
 const addButton = document.querySelector<HTMLButtonElement>('.todo-form button')!
+const authSubmitButton = document.querySelector<HTMLButtonElement>('#auth-submit')!
+const toggleAuthModeButton = document.querySelector<HTMLButtonElement>('#toggle-auth-mode')!
 const list = document.querySelector<HTMLUListElement>('#todo-list')!
 const emptyState = document.querySelector<HTMLParagraphElement>('#empty-state')!
 const errorState = document.querySelector<HTMLParagraphElement>('#error-state')!
 const todoCount = document.querySelector<HTMLSpanElement>('#todo-count')!
 const clearCompleted = document.querySelector<HTMLButtonElement>('#clear-completed')!
+const userPanel = document.querySelector<HTMLDivElement>('#user-panel')!
+const userLabel = document.querySelector<HTMLSpanElement>('#user-label')!
+const signOutButton = document.querySelector<HTMLButtonElement>('#sign-out')!
+
+authForm.addEventListener('submit', async (event) => {
+  event.preventDefault()
+
+  const email = emailInput.value.trim()
+  const password = passwordInput.value
+  if (!email || !password || isAuthLoading) return
+
+  await saveAuthChange(async () => {
+    if (authMode === 'login') {
+      const { error } = await authClient.signIn.email({ email, password, rememberMe: true })
+      if (error) throw new Error(error.message ?? 'Sign in failed')
+    } else {
+      const { error } = await authClient.signUp.email({ email, password, name: email })
+      if (error) throw new Error(error.message ?? 'Sign up failed')
+    }
+
+    passwordInput.value = ''
+    await refreshSession()
+    await loadTodos()
+  })
+})
+
+toggleAuthModeButton.addEventListener('click', () => {
+  authMode = authMode === 'login' ? 'signup' : 'login'
+  setError('')
+  render()
+})
+
+signOutButton.addEventListener('click', async () => {
+  if (isAuthLoading) return
+
+  await saveAuthChange(async () => {
+    await authClient.signOut()
+    currentUser = null
+    todos = []
+  })
+})
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault()
@@ -141,6 +233,12 @@ clearCompleted.addEventListener('click', async () => {
 async function loadTodos() {
   setError('')
 
+  if (!currentUser) {
+    todos = []
+    render()
+    return
+  }
+
   try {
     const data = await requestJson<{ todos: Todo[] }>('/api/todos')
     todos = data.todos
@@ -152,7 +250,7 @@ async function loadTodos() {
 }
 
 async function saveChange(change: () => Promise<void>, rollback?: () => void) {
-  setSaving(true)
+  isSaving = true
   setError('')
   render()
 
@@ -162,9 +260,29 @@ async function saveChange(change: () => Promise<void>, rollback?: () => void) {
     rollback?.()
     setError((error as Error).message)
   } finally {
-    setSaving(false)
+    isSaving = false
     render()
   }
+}
+
+async function saveAuthChange(change: () => Promise<void>) {
+  isAuthLoading = true
+  setError('')
+  render()
+
+  try {
+    await change()
+  } catch (error) {
+    setError((error as Error).message)
+  } finally {
+    isAuthLoading = false
+    render()
+  }
+}
+
+async function refreshSession() {
+  const { data } = await authClient.getSession()
+  currentUser = (data?.user as SessionUser | undefined) ?? null
 }
 
 function render() {
@@ -172,15 +290,24 @@ function render() {
 
   const remaining = todos.filter((todo) => !todo.completed).length
   todoCount.textContent = `${remaining} ${remaining === 1 ? 'item' : 'items'} left`
-  emptyState.textContent = errorState.hidden ? 'No todos yet.' : 'Unable to load todos.'
+  emptyState.textContent = getEmptyStateText()
   emptyState.hidden = todos.length > 0
-  clearCompleted.disabled = isSaving || !todos.some((todo) => todo.completed)
-  addButton.disabled = isSaving
-  input.disabled = isSaving
-}
-
-function setSaving(value: boolean) {
-  isSaving = value
+  clearCompleted.disabled = isSaving || !currentUser || !todos.some((todo) => todo.completed)
+  addButton.disabled = isSaving || !currentUser
+  input.disabled = isSaving || !currentUser
+  input.placeholder = currentUser ? 'What needs to be done?' : 'Log in to manage todos'
+  authForm.hidden = Boolean(currentUser)
+  userPanel.hidden = !currentUser
+  userLabel.textContent = currentUser?.email ?? currentUser?.name ?? 'Signed in'
+  authSubmitButton.textContent = authMode === 'login' ? 'Log in' : 'Sign up'
+  toggleAuthModeButton.textContent =
+    authMode === 'login' ? 'Create account' : 'Use existing account'
+  passwordInput.autocomplete = authMode === 'login' ? 'current-password' : 'new-password'
+  authSubmitButton.disabled = isAuthLoading
+  toggleAuthModeButton.disabled = isAuthLoading
+  emailInput.disabled = isAuthLoading
+  passwordInput.disabled = isAuthLoading
+  signOutButton.disabled = isAuthLoading
 }
 
 function setError(message: string) {
@@ -218,12 +345,15 @@ async function requestTodo<TodoResponse>(url: string, init?: RequestInit) {
 }
 
 async function requestJson<TResponse>(url: string, init?: RequestInit) {
-  const response = await fetch(toApiUrl(url), {
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
+  const headers = new Headers(init?.headers)
+  if (init?.body !== undefined && init.body !== null && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const response = await fetch(url, {
     ...init,
+    headers,
+    credentials: 'include',
   })
 
   if (response.status === 204) return undefined as TResponse
@@ -236,8 +366,9 @@ async function requestJson<TResponse>(url: string, init?: RequestInit) {
   return data as TResponse
 }
 
-function toApiUrl(path: string) {
-  return new URL(path, window.location.origin).toString()
+function getEmptyStateText() {
+  if (!errorState.hidden) return 'Unable to load todos.'
+  return currentUser ? 'No todos yet.' : 'Log in to load your todos.'
 }
 
 function escapeHtml(value: string) {
@@ -254,4 +385,7 @@ function escapeHtml(value: string) {
   })
 }
 
-loadTodos()
+await saveAuthChange(async () => {
+  await refreshSession()
+  await loadTodos()
+})

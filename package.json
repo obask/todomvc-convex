@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "set -a; . ./.env.local; set +a; vercel dev --listen 127.0.0.1:5173",
+    "dev:api": "vercel dev --listen 127.0.0.1:5173",
     "dev:vite": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview"
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@vercel/functions": "^3.5.1",
+    "better-auth": "^1.6.10",
     "pg": "^8.20.0"
   }
 }
