@@ -11,14 +11,12 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@types/node": "^25.6.2",
-    "@types/pg": "^8.20.0",
-    "@vercel/node": "^5.7.15",
+    "@types/bun": "^1.3.13",
     "typescript": "~6.0.2",
     "vercel": "^53.2.0",
     "vite": "^8.0.10"
   },
   "dependencies": {
-    "pg": "^8.20.0"
+    "postgres": "^3.4.9"
   }
 }
