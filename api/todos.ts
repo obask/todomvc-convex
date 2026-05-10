@@ -1,5 +1,4 @@
-import { SQL } from 'bun'
-import { attachDatabasePool } from '@vercel/functions'
+import { auth, authSql } from '../auth'
 
 type TodoRow = {
   id: string
@@ -7,30 +6,26 @@ type TodoRow = {
   completed: boolean
 }
 
-const env = Bun.env
-const connectionString = env.POSTGRES_URL
-const sql = connectionString
-  ? new SQL({
-      url: connectionString,
-      idleTimeout: readPositiveNumber(env.POSTGRES_IDLE_TIMEOUT, 5),
-      max: readPositiveNumber(env.POSTGRES_MAX_CONNECTIONS, 5),
-      maxLifetime: readPositiveNumber(env.POSTGRES_MAX_LIFETIME, 60 * 30),
-    })
-  : null
-
-if (sql) attachDatabasePool(sql)
-
 export default {
   async fetch(request: Request) {
-    if (!sql) {
+    if (!authSql) {
       return json({ error: 'POSTGRES_URL is not configured' }, 500)
     }
 
     try {
       const url = new URL(request.url)
+      const session = await auth.api.getSession({
+        headers: request.headers,
+      })
+
+      if (!session) {
+        return json({ error: 'Sign in to manage todos' }, 401)
+      }
+
+      const userId = session.user.id
 
       if (request.method === 'GET') {
-        const todos = await listTodos()
+        const todos = await listTodos(userId)
         return json({ todos })
       }
 
@@ -40,7 +35,6 @@ export default {
           return json({ error: 'Todo text is required' }, 400)
         }
 
-        const userId = await resolveUserId()
         const todo = await createTodo(text, userId)
         return json({ todo }, 201)
       }
@@ -52,7 +46,7 @@ export default {
           return json({ error: 'Todo id and completed state are required' }, 400)
         }
 
-        const todo = await updateTodo(id, completed)
+        const todo = await updateTodo(id, completed, userId)
         if (!todo) {
           return json({ error: 'Todo not found' }, 404)
         }
@@ -63,12 +57,12 @@ export default {
       if (request.method === 'DELETE') {
         const id = url.searchParams.get('id') ?? ''
         if (id) {
-          await deleteTodo(id)
+          await deleteTodo(id, userId)
           return new Response(null, { status: 204 })
         }
 
         if (url.searchParams.get('completed') === 'true') {
-          await deleteCompletedTodos()
+          await deleteCompletedTodos(userId)
           return new Response(null, { status: 204 })
         }
 
@@ -87,11 +81,12 @@ export default {
   },
 }
 
-async function listTodos() {
+async function listTodos(userId: string) {
   const database = getSql()
   const rows = (await database`
     select id, text, completed
     from todo
+    where user_id = ${userId}
     order by created_at asc, id asc
   `) as TodoRow[]
 
@@ -109,52 +104,34 @@ async function createTodo(text: string, userId: string) {
   return todo
 }
 
-async function updateTodo(id: string, completed: boolean) {
+async function updateTodo(id: string, completed: boolean, userId: string) {
   const database = getSql()
   const [todo] = (await database`
     update todo
     set completed = ${completed}, updated_at = now()
-    where id = ${id}
+    where id = ${id} and user_id = ${userId}
     returning id, text, completed
   `) as TodoRow[]
 
   return todo ?? null
 }
 
-async function deleteTodo(id: string) {
+async function deleteTodo(id: string, userId: string) {
   const database = getSql()
-  await database`delete from todo where id = ${id}`
+  await database`delete from todo where id = ${id} and user_id = ${userId}`
 }
 
-async function deleteCompletedTodos() {
+async function deleteCompletedTodos(userId: string) {
   const database = getSql()
-  await database`delete from todo where completed = true`
-}
-
-async function resolveUserId() {
-  if (env.TODO_USER_ID) return env.TODO_USER_ID
-
-  const database = getSql()
-  const [todo] = (await database`
-    select user_id from todo order by created_at asc limit 1
-  `) as { user_id: string }[]
-
-  return todo?.user_id ?? 'local'
+  await database`delete from todo where completed = true and user_id = ${userId}`
 }
 
 function getSql() {
-  if (!sql) {
+  if (!authSql) {
     throw new Error('POSTGRES_URL is not configured')
   }
 
-  return sql
-}
-
-function readPositiveNumber(value: string | undefined, fallback: number) {
-  if (!value) return fallback
-
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+  return authSql
 }
 
 async function readBody(request: Request) {

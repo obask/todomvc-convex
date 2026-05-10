@@ -1,20 +1,62 @@
 import './style.css'
 
+type Session = {
+  user: {
+    id: string
+    name?: string
+    email: string
+  }
+}
+
 type Todo = {
   id: string
   text: string
   completed: boolean
 }
 
+type AuthMode = 'sign-in' | 'sign-up'
+
+let session: Session | null = null
 let todos: Todo[] = []
 let isSaving = false
+let authMode: AuthMode = 'sign-in'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="todo-app" aria-labelledby="app-title">
     <header class="app-header">
-      <p class="eyebrow">Postgres list</p>
-      <h1 id="app-title">Todos</h1>
+      <div>
+        <p class="eyebrow">Postgres list</p>
+        <h1 id="app-title">Todos</h1>
+      </div>
+      <button id="sign-out" class="secondary-button" type="button" hidden>Sign out</button>
     </header>
+
+    <section class="auth-panel" id="auth-panel" aria-label="Account">
+      <div class="auth-tabs" role="tablist" aria-label="Auth mode">
+        <button id="sign-in-tab" type="button" aria-selected="true">Sign in</button>
+        <button id="sign-up-tab" type="button" aria-selected="false">Sign up</button>
+      </div>
+      <form class="auth-form" id="auth-form">
+        <label>
+          <span>Email</span>
+          <input id="auth-email" name="email" type="email" autocomplete="email" required />
+        </label>
+        <label>
+          <span>Password</span>
+          <input
+            id="auth-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            minlength="8"
+            required
+          />
+        </label>
+        <button id="auth-submit" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <p class="signed-in-state" id="signed-in-state" hidden></p>
 
     <form class="todo-form" id="todo-form">
       <label class="sr-only" for="todo-input">New todo</label>
@@ -45,11 +87,61 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 const form = document.querySelector<HTMLFormElement>('#todo-form')!
 const input = document.querySelector<HTMLInputElement>('#todo-input')!
 const addButton = document.querySelector<HTMLButtonElement>('.todo-form button')!
+const authPanel = document.querySelector<HTMLElement>('#auth-panel')!
+const authForm = document.querySelector<HTMLFormElement>('#auth-form')!
+const authEmail = document.querySelector<HTMLInputElement>('#auth-email')!
+const authPassword = document.querySelector<HTMLInputElement>('#auth-password')!
+const authSubmit = document.querySelector<HTMLButtonElement>('#auth-submit')!
+const signInTab = document.querySelector<HTMLButtonElement>('#sign-in-tab')!
+const signUpTab = document.querySelector<HTMLButtonElement>('#sign-up-tab')!
+const signOutButton = document.querySelector<HTMLButtonElement>('#sign-out')!
+const signedInState = document.querySelector<HTMLParagraphElement>('#signed-in-state')!
 const list = document.querySelector<HTMLUListElement>('#todo-list')!
 const emptyState = document.querySelector<HTMLParagraphElement>('#empty-state')!
 const errorState = document.querySelector<HTMLParagraphElement>('#error-state')!
 const todoCount = document.querySelector<HTMLSpanElement>('#todo-count')!
 const clearCompleted = document.querySelector<HTMLButtonElement>('#clear-completed')!
+
+authForm.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  if (isSaving) return
+
+  const email = authEmail.value.trim()
+  const password = authPassword.value
+  if (!email || !password) return
+
+  await saveChange(async () => {
+    const path =
+      authMode === 'sign-in' ? '/api/auth/sign-in/email' : '/api/auth/sign-up/email'
+    const body =
+      authMode === 'sign-in'
+        ? { email, password }
+        : { email, password, name: email.split('@')[0] || email }
+
+    await requestJson(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+
+    authPassword.value = ''
+    await loadSession()
+  })
+})
+
+signInTab.addEventListener('click', () => setAuthMode('sign-in'))
+signUpTab.addEventListener('click', () => setAuthMode('sign-up'))
+
+signOutButton.addEventListener('click', async () => {
+  if (isSaving) return
+
+  await saveChange(async () => {
+    await requestJson('/api/auth/sign-out', {
+      method: 'POST',
+    })
+    session = null
+    todos = []
+  })
+})
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault()
@@ -141,6 +233,12 @@ clearCompleted.addEventListener('click', async () => {
 async function loadTodos() {
   setError('')
 
+  if (!session) {
+    todos = []
+    render()
+    return
+  }
+
   try {
     const data = await requestJson<{ todos: Todo[] }>('/api/todos')
     todos = data.todos
@@ -149,6 +247,19 @@ async function loadTodos() {
   } finally {
     render()
   }
+}
+
+async function loadSession() {
+  setError('')
+
+  try {
+    const data = await requestJson<Session | null>('/api/auth/get-session')
+    session = data
+  } catch {
+    session = null
+  }
+
+  await loadTodos()
 }
 
 async function saveChange(change: () => Promise<void>, rollback?: () => void) {
@@ -170,13 +281,22 @@ async function saveChange(change: () => Promise<void>, rollback?: () => void) {
 function render() {
   list.innerHTML = todos.map(createTodoMarkup).join('')
 
+  authPanel.hidden = Boolean(session)
+  signOutButton.hidden = !session
+  signedInState.hidden = !session
+  signedInState.textContent = session ? `Signed in as ${session.user.email}` : ''
+
   const remaining = todos.filter((todo) => !todo.completed).length
   todoCount.textContent = `${remaining} ${remaining === 1 ? 'item' : 'items'} left`
-  emptyState.textContent = errorState.hidden ? 'No todos yet.' : 'Unable to load todos.'
+  emptyState.textContent = getEmptyStateText()
   emptyState.hidden = todos.length > 0
   clearCompleted.disabled = isSaving || !todos.some((todo) => todo.completed)
-  addButton.disabled = isSaving
-  input.disabled = isSaving
+  addButton.disabled = isSaving || !session
+  input.disabled = isSaving || !session
+  form.hidden = !session
+  clearCompleted.hidden = !session
+  authSubmit.disabled = isSaving
+  signOutButton.disabled = isSaving
 }
 
 function setSaving(value: boolean) {
@@ -186,6 +306,21 @@ function setSaving(value: boolean) {
 function setError(message: string) {
   errorState.textContent = message
   errorState.hidden = !message
+}
+
+function setAuthMode(mode: AuthMode) {
+  authMode = mode
+  signInTab.setAttribute('aria-selected', String(mode === 'sign-in'))
+  signUpTab.setAttribute('aria-selected', String(mode === 'sign-up'))
+  authSubmit.textContent = mode === 'sign-in' ? 'Sign in' : 'Create account'
+  authPassword.autocomplete =
+    mode === 'sign-in' ? 'current-password' : 'new-password'
+}
+
+function getEmptyStateText() {
+  if (!errorState.hidden) return 'Unable to load todos.'
+  if (!session) return 'Sign in to load your todos.'
+  return 'No todos yet.'
 }
 
 function createTodoMarkup(todo: Todo) {
@@ -228,12 +363,30 @@ async function requestJson<TResponse>(url: string, init?: RequestInit) {
 
   if (response.status === 204) return undefined as TResponse
 
-  const data = await response.json()
+  const data = await readJson(response)
   if (!response.ok) {
-    throw new Error(data.error ?? 'Request failed')
+    throw new Error(readErrorMessage(data))
   }
 
   return data as TResponse
+}
+
+async function readJson(response: Response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+function readErrorMessage(data: unknown) {
+  if (!data || typeof data !== 'object') return 'Request failed'
+
+  const record = data as Record<string, unknown>
+  if (typeof record.error === 'string') return record.error
+  if (typeof record.message === 'string') return record.message
+
+  return 'Request failed'
 }
 
 function toApiUrl(path: string) {
@@ -254,4 +407,5 @@ function escapeHtml(value: string) {
   })
 }
 
-loadTodos()
+setAuthMode(authMode)
+loadSession()
