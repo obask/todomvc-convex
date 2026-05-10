@@ -1,6 +1,7 @@
 import { SQL } from 'bun'
 import { attachDatabasePool } from '@vercel/functions'
 import { Elysia, status, t } from 'elysia'
+import { auth } from '../auth'
 
 type TodoRow = {
   id: string
@@ -9,7 +10,7 @@ type TodoRow = {
 }
 
 const env = Bun.env
-const connectionString = env.POSTGRES_URL
+const connectionString = env.POSTGRES_URL ?? env.DATABASE_URL
 const sql = connectionString
   ? new SQL({
       url: connectionString,
@@ -58,14 +59,20 @@ export const app = new Elysia({ prefix: '/api/todos' })
       return { error: error.message }
     }
 
+    if (error instanceof Error && error.message === 'Sign in to manage todos') {
+      set.status = 401
+      return { error: error.message }
+    }
+
     console.error(error)
     set.status = 500
     return { error: 'Unable to process todos' }
   })
   .get(
     '/',
-    async () => {
-      const todos = await listTodos()
+    async ({ request }) => {
+      const session = await getSession(request)
+      const todos = await listTodos(session.user.id)
       return { todos }
     },
     {
@@ -77,14 +84,14 @@ export const app = new Elysia({ prefix: '/api/todos' })
   )
   .post(
     '/',
-    async ({ body }) => {
+    async ({ body, request }) => {
       const text = body.text.trim()
       if (!text) {
         return status(400, { error: 'Todo text is required' })
       }
 
-      const userId = await resolveUserId()
-      const todo = await createTodo(text, userId)
+      const session = await getSession(request)
+      const todo = await createTodo(text, session.user.id)
       return status(201, { todo })
     },
     {
@@ -98,8 +105,9 @@ export const app = new Elysia({ prefix: '/api/todos' })
   )
   .patch(
     '/',
-    async ({ body, query }) => {
-      const todo = await updateTodo(query.id, body.completed)
+    async ({ body, query, request }) => {
+      const session = await getSession(request)
+      const todo = await updateTodo(query.id, body.completed, session.user.id)
       if (!todo) {
         return status(404, { error: 'Todo not found' })
       }
@@ -118,14 +126,16 @@ export const app = new Elysia({ prefix: '/api/todos' })
   )
   .delete(
     '/',
-    async ({ query }) => {
+    async ({ query, request }) => {
+      const session = await getSession(request)
+
       if (query.id) {
-        await deleteTodo(query.id)
+        await deleteTodo(query.id, session.user.id)
         return status(204)
       }
 
       if (query.completed === 'true') {
-        await deleteCompletedTodos()
+        await deleteCompletedTodos(session.user.id)
         return status(204)
       }
 
@@ -146,11 +156,12 @@ export const app = new Elysia({ prefix: '/api/todos' })
 
 export type App = typeof app
 
-async function listTodos() {
+async function listTodos(userId: string) {
   const database = getSql()
   const rows = (await database`
     select id, text, completed
     from todo
+    where user_id = ${userId}
     order by created_at asc, id asc
   `) as TodoRow[]
 
@@ -168,37 +179,26 @@ async function createTodo(text: string, userId: string) {
   return todo
 }
 
-async function updateTodo(id: string, completed: boolean) {
+async function updateTodo(id: string, completed: boolean, userId: string) {
   const database = getSql()
   const [todo] = (await database`
     update todo
     set completed = ${completed}, updated_at = now()
-    where id = ${id}
+    where id = ${id} and user_id = ${userId}
     returning id, text, completed
   `) as TodoRow[]
 
   return todo ?? null
 }
 
-async function deleteTodo(id: string) {
+async function deleteTodo(id: string, userId: string) {
   const database = getSql()
-  await database`delete from todo where id = ${id}`
+  await database`delete from todo where id = ${id} and user_id = ${userId}`
 }
 
-async function deleteCompletedTodos() {
+async function deleteCompletedTodos(userId: string) {
   const database = getSql()
-  await database`delete from todo where completed = true`
-}
-
-async function resolveUserId() {
-  if (env.TODO_USER_ID) return env.TODO_USER_ID
-
-  const database = getSql()
-  const [todo] = (await database`
-    select user_id from todo order by created_at asc limit 1
-  `) as { user_id: string }[]
-
-  return todo?.user_id ?? 'local'
+  await database`delete from todo where completed = true and user_id = ${userId}`
 }
 
 function getSql() {
@@ -207,6 +207,18 @@ function getSql() {
   }
 
   return sql
+}
+
+async function getSession(request: Request) {
+  const session = await auth.api.getSession({
+    headers: request.headers,
+  })
+
+  if (!session) {
+    throw new Error('Sign in to manage todos')
+  }
+
+  return session
 }
 
 function readPositiveNumber(value: string | undefined, fallback: number) {

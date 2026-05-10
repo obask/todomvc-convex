@@ -58,7 +58,9 @@ button:disabled {
 }
 
 .app-header {
-  display: grid;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
   gap: 6px;
 }
 
@@ -78,9 +80,9 @@ h1 {
   letter-spacing: 0;
 }
 
+.auth-panel,
 .todo-form {
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 10px;
   padding: 12px;
   background: var(--panel);
@@ -89,6 +91,48 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.auth-tabs button {
+  min-height: 38px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font-weight: 700;
+}
+
+.auth-tabs button[aria-selected="true"] {
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 1px 6px rgba(22, 34, 51, 0.12);
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.todo-form {
+  grid-template-columns: 1fr auto;
+}
+
+.auth-form input,
 .todo-form input {
   width: 100%;
   min-height: 48px;
@@ -100,13 +144,16 @@ h1 {
   outline: none;
 }
 
+.auth-form input:focus,
 .todo-form input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(31, 122, 92, 0.16);
 }
 
+.auth-form button,
 .todo-form button,
-.todo-footer button {
+.todo-footer button,
+.secondary-button {
   min-height: 44px;
   padding: 0 16px;
   color: #ffffff;
@@ -116,8 +163,10 @@ h1 {
   font-weight: 700;
 }
 
+.auth-form button:hover,
 .todo-form button:hover,
-.todo-footer button:hover:not(:disabled) {
+.todo-footer button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled) {
   background: var(--accent-dark);
 }
 
@@ -200,6 +249,19 @@ h1 {
   display: none;
 }
 
+.signed-in-state {
+  margin: 0;
+  color: var(--muted);
+}
+
+.signed-in-state[hidden],
+.auth-panel[hidden],
+.todo-form[hidden],
+.secondary-button[hidden],
+.todo-footer button[hidden] {
+  display: none;
+}
+
 .error-state {
   margin: 0;
   padding: 12px 14px;
@@ -247,12 +309,19 @@ h1 {
     padding: 32px 14px;
   }
 
+  .app-header,
   .todo-form,
   .todo-item,
   .todo-footer {
     grid-template-columns: 1fr;
   }
 
+  .app-header {
+    display: grid;
+    align-items: start;
+  }
+
+  .secondary-button,
   .todo-form button,
   .todo-footer button {
     width: 100%;
