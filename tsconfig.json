@@ -19,5 +19,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "api", "server", "auth.ts", "auth-handler.ts", "index.ts"]
+  "include": ["src", "api", "server", "auth.ts"]
 }
