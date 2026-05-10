@@ -1,6 +1,5 @@
 import './style.css'
-import { treaty } from '@elysiajs/eden'
-import type { TodoApp } from '../api/todos'
+import { api } from './lib/eden'
 
 type Todo = {
   id: string
@@ -10,7 +9,6 @@ type Todo = {
 
 let todos: Todo[] = []
 let isSaving = false
-const api = treaty<TodoApp>(window.location.origin).api.todos
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="todo-app" aria-labelledby="app-title">
