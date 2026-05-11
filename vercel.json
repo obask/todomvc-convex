@@ -1,4 +1,5 @@
 {
   "buildCommand": "pnpm vercel-build",
-  "devCommand": "vite --port $PORT"
+  "devCommand": "vite --port $PORT",
+  "framework": "vite"
 }
