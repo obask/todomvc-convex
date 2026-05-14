@@ -1,4 +1,4 @@
-import { auth, authSql } from '../auth'
+import { authSql, requireUserId } from '../auth'
 
 type TodoRow = {
   id: string
@@ -14,15 +14,7 @@ export default {
 
     try {
       const url = new URL(request.url)
-      const session = await auth.api.getSession({
-        headers: request.headers,
-      })
-
-      if (!session) {
-        return json({ error: 'Sign in to manage todos' }, 401)
-      }
-
-      const userId = session.user.id
+      const userId = await requireUserId(request)
 
       if (request.method === 'GET') {
         const todos = await listTodos(userId)
@@ -92,7 +84,10 @@ export default {
         { Allow: 'GET, POST, PATCH, DELETE' },
       )
     } catch (error) {
-      console.error(error)
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        return json({ error: 'Log in to manage todos' }, 401)
+      }
+      console.error(formatError('[todos] unhandled error', error))
       return json({ error: 'Unable to process todos' }, 500)
     }
   },
@@ -214,4 +209,14 @@ function json(
     status,
     headers,
   })
+}
+
+function formatError(prefix: string, error: unknown): string {
+  if (error instanceof Error) {
+    return `${prefix}\n${error.stack ?? `${error.name}: ${error.message}`}`
+  }
+  if (error instanceof Uint8Array) {
+    return `${prefix}\n${new TextDecoder().decode(error)}`
+  }
+  return `${prefix}\n${String(error)}`
 }

@@ -15,12 +15,14 @@ type Todo = {
 }
 
 type AuthMode = 'sign-in' | 'sign-up'
+type TodoFilter = 'all' | 'active' | 'completed'
+type TodoDraft = Partial<Pick<Todo, 'text' | 'completed'>>
 
 let session: Session | null = null
 let todos: Todo[] = []
 let isSaving = false
 let authMode: AuthMode = 'sign-in'
-let filter: 'all' | 'active' | 'completed' = 'all'
+let filter: TodoFilter = 'all'
 let editingId: string | null = null
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -92,25 +94,25 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </main>
 `
 
-const form = document.querySelector<HTMLFormElement>('#todo-form')!
-const input = document.querySelector<HTMLInputElement>('#todo-input')!
-const addButton = document.querySelector<HTMLButtonElement>('.todo-form button[type="submit"]')!
-const toggleAllButton = document.querySelector<HTMLButtonElement>('#toggle-all')!
-const authPanel = document.querySelector<HTMLElement>('#auth-panel')!
-const authForm = document.querySelector<HTMLFormElement>('#auth-form')!
-const authEmail = document.querySelector<HTMLInputElement>('#auth-email')!
-const authPassword = document.querySelector<HTMLInputElement>('#auth-password')!
-const authSubmit = document.querySelector<HTMLButtonElement>('#auth-submit')!
-const signInTab = document.querySelector<HTMLButtonElement>('#sign-in-tab')!
-const signUpTab = document.querySelector<HTMLButtonElement>('#sign-up-tab')!
-const signOutButton = document.querySelector<HTMLButtonElement>('#sign-out')!
-const signedInState = document.querySelector<HTMLParagraphElement>('#signed-in-state')!
-const list = document.querySelector<HTMLUListElement>('#todo-list')!
-const emptyState = document.querySelector<HTMLParagraphElement>('#empty-state')!
-const errorState = document.querySelector<HTMLParagraphElement>('#error-state')!
-const todoCount = document.querySelector<HTMLSpanElement>('#todo-count')!
-const clearCompleted = document.querySelector<HTMLButtonElement>('#clear-completed')!
-const filters = document.querySelector<HTMLDivElement>('#filters')!
+const form = getElement<HTMLFormElement>('#todo-form')
+const input = getElement<HTMLInputElement>('#todo-input')
+const addButton = getElement<HTMLButtonElement>('.todo-form button[type="submit"]')
+const toggleAllButton = getElement<HTMLButtonElement>('#toggle-all')
+const authPanel = getElement<HTMLElement>('#auth-panel')
+const authForm = getElement<HTMLFormElement>('#auth-form')
+const authEmail = getElement<HTMLInputElement>('#auth-email')
+const authPassword = getElement<HTMLInputElement>('#auth-password')
+const authSubmit = getElement<HTMLButtonElement>('#auth-submit')
+const signInTab = getElement<HTMLButtonElement>('#sign-in-tab')
+const signUpTab = getElement<HTMLButtonElement>('#sign-up-tab')
+const signOutButton = getElement<HTMLButtonElement>('#sign-out')
+const signedInState = getElement<HTMLParagraphElement>('#signed-in-state')
+const list = getElement<HTMLUListElement>('#todo-list')
+const emptyState = getElement<HTMLParagraphElement>('#empty-state')
+const errorState = getElement<HTMLParagraphElement>('#error-state')
+const todoCount = getElement<HTMLSpanElement>('#todo-count')
+const clearCompleted = getElement<HTMLButtonElement>('#clear-completed')
+const filters = getElement<HTMLDivElement>('#filters')
 
 authForm.addEventListener('submit', async (event) => {
   event.preventDefault()
@@ -121,18 +123,7 @@ authForm.addEventListener('submit', async (event) => {
   if (!email || !password) return
 
   await saveChange(async () => {
-    const path =
-      authMode === 'sign-in' ? '/api/auth/sign-in/email' : '/api/auth/sign-up/email'
-    const body =
-      authMode === 'sign-in'
-        ? { email, password }
-        : { email, password, name: email.split('@')[0] || email }
-
-    await requestJson(path, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    })
-
+    await submitAuth(email, password)
     authPassword.value = ''
     await loadSession()
   })
@@ -145,9 +136,7 @@ signOutButton.addEventListener('click', async () => {
   if (isSaving) return
 
   await saveChange(async () => {
-    await requestJson('/api/auth/sign-out', {
-      method: 'POST',
-    })
+    await requestJson('/api/auth/sign-out', { method: 'POST' })
     session = null
     todos = []
   })
@@ -160,12 +149,13 @@ form.addEventListener('submit', async (event) => {
   if (!text || isSaving) return
 
   await saveChange(async () => {
-    const todo = await requestTodo<Todo>('/api/todos', {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    })
-
-    todos = [...todos, todo]
+    todos = [
+      ...todos,
+      await requestTodo('/api/todos', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+    ]
     input.value = ''
   })
 })
@@ -177,25 +167,7 @@ list.addEventListener('change', async (event) => {
   const id = checkbox.dataset.id
   if (!id) return
 
-  const previousTodos = todos
-  todos = todos.map((todo) =>
-    todo.id === id ? { ...todo, completed: checkbox.checked } : todo,
-  )
-  render()
-
-  await saveChange(
-    async () => {
-      const todo = await requestTodo<Todo>(`/api/todos?id=${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ completed: checkbox.checked }),
-      })
-
-      todos = todos.map((item) => (item.id === todo.id ? todo : item))
-    },
-    () => {
-      todos = previousTodos
-    },
-  )
+  await saveTodoOptimistically(id, { completed: checkbox.checked })
 })
 
 list.addEventListener('click', async (event) => {
@@ -205,37 +177,16 @@ list.addEventListener('click', async (event) => {
   const id = button.dataset.id
   if (!id) return
 
-  const previousTodos = todos
-  todos = todos.filter((todo) => todo.id !== id)
-  render()
-
-  await saveChange(
-    async () => {
-      await requestJson(`/api/todos?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      })
-    },
-    () => {
-      todos = previousTodos
-    },
-  )
+  await deleteTodo(id)
 })
 
 clearCompleted.addEventListener('click', async () => {
   if (isSaving) return
 
-  const previousTodos = todos
-  todos = todos.filter((todo) => !todo.completed)
-  render()
-
-  await saveChange(
+  await replaceTodosOptimistically(
+    todos.filter((todo) => !todo.completed),
     async () => {
-      await requestJson('/api/todos?completed=true', {
-        method: 'DELETE',
-      })
-    },
-    () => {
-      todos = previousTodos
+      await requestJson('/api/todos?completed=true', { method: 'DELETE' })
     },
   )
 })
@@ -244,11 +195,8 @@ toggleAllButton.addEventListener('click', async () => {
   if (isSaving) return
 
   const nextCompleted = !todos.every((todo) => todo.completed)
-  const previousTodos = todos
-  todos = todos.map((todo) => ({ ...todo, completed: nextCompleted }))
-  render()
-
-  await saveChange(
+  await replaceTodosOptimistically(
+    todos.map((todo) => ({ ...todo, completed: nextCompleted })),
     async () => {
       const data = await requestJson<{ todos: Todo[] }>('/api/todos', {
         method: 'PATCH',
@@ -256,19 +204,16 @@ toggleAllButton.addEventListener('click', async () => {
       })
       todos = data.todos
     },
-    () => {
-      todos = previousTodos
-    },
   )
 })
 
 filters.addEventListener('click', (event) => {
   const button = event.target
-  if (!(button instanceof HTMLButtonElement)) return
+  if (!(button instanceof HTMLButtonElement) || !isTodoFilter(button.dataset.filter)) {
+    return
+  }
 
-  const next = button.dataset.filter
-  if (next !== 'all' && next !== 'active' && next !== 'completed') return
-  filter = next
+  filter = button.dataset.filter
   render()
 })
 
@@ -309,6 +254,25 @@ list.addEventListener('keydown', async (event) => {
     render()
   }
 })
+
+async function submitAuth(email: string, password: string) {
+  if (authMode === 'sign-in') {
+    await requestJson('/api/auth/sign-in/email', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+    return
+  }
+
+  await requestJson('/api/auth/sign-up/email', {
+    method: 'POST',
+    body: JSON.stringify({
+      email,
+      password,
+      name: email.split('@')[0] || email,
+    }),
+  })
+}
 
 async function loadTodos() {
   setError('')
@@ -359,13 +323,7 @@ async function saveChange(change: () => Promise<void>, rollback?: () => void) {
 }
 
 function render() {
-  const visibleTodos = todos.filter((todo) => {
-    if (filter === 'active') return !todo.completed
-    if (filter === 'completed') return todo.completed
-    return true
-  })
-
-  list.innerHTML = visibleTodos.map(createTodoMarkup).join('')
+  list.innerHTML = getVisibleTodos().map(createTodoMarkup).join('')
 
   authPanel.hidden = Boolean(session)
   signOutButton.hidden = !session
@@ -414,6 +372,14 @@ function getEmptyStateText() {
   return 'No todos yet.'
 }
 
+function getVisibleTodos() {
+  return todos.filter((todo) => {
+    if (filter === 'active') return !todo.completed
+    if (filter === 'completed') return todo.completed
+    return true
+  })
+}
+
 function createTodoMarkup(todo: Todo) {
   const text = escapeHtml(todo.text)
   return `
@@ -449,31 +415,42 @@ async function commitEdit(id: string, value: string) {
   editingId = null
   const text = value.trim()
   if (!text) {
-    const previousTodos = todos
-    todos = todos.filter((todo) => todo.id !== id)
-    render()
-    await saveChange(
-      async () => {
-        await requestJson(`/api/todos?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-      },
-      () => {
-        todos = previousTodos
-      },
-    )
+    await deleteTodo(id)
     return
   }
 
-  const previousTodos = todos
-  todos = todos.map((todo) => (todo.id === id ? { ...todo, text } : todo))
-  render()
-  await saveChange(
+  await saveTodoOptimistically(id, { text })
+}
+
+async function deleteTodo(id: string) {
+  await replaceTodosOptimistically(
+    todos.filter((todo) => todo.id !== id),
+    async () => {
+      await requestJson(`/api/todos?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+  )
+}
+
+async function saveTodoOptimistically(id: string, draft: TodoDraft) {
+  await replaceTodosOptimistically(
+    todos.map((todo) => (todo.id === id ? { ...todo, ...draft } : todo)),
     async () => {
       const todo = await requestTodo<Todo>(`/api/todos?id=${encodeURIComponent(id)}`, {
         method: 'PATCH',
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(draft),
       })
       todos = todos.map((item) => (item.id === todo.id ? todo : item))
     },
+  )
+}
+
+async function replaceTodosOptimistically(nextTodos: Todo[], change: () => Promise<void>) {
+  const previousTodos = todos
+  todos = nextTodos
+  render()
+
+  await saveChange(
+    change,
     () => {
       todos = previousTodos
     },
@@ -524,6 +501,14 @@ function readErrorMessage(data: unknown) {
 
 function toApiUrl(path: string) {
   return new URL(path, window.location.origin).toString()
+}
+
+function getElement<TElement extends Element>(selector: string): TElement {
+  return document.querySelector<TElement>(selector)!
+}
+
+function isTodoFilter(value: unknown): value is TodoFilter {
+  return value === 'all' || value === 'active' || value === 'completed'
 }
 
 function escapeHtml(value: string) {
