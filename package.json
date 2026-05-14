@@ -24,5 +24,6 @@
     "better-auth": "^1.6.10",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.20.0"
-  }
+  },
+  "redeployTrigger": "2026-05-14T02:02:18Z"
 }
