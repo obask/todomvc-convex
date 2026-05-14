@@ -9,7 +9,7 @@ type TodoRow = {
 export default {
   async fetch(request: Request) {
     if (!authSql) {
-      return json({ error: 'POSTGRES_URL is not configured' }, 500)
+      return json({ error: 'POSTGRES_URL or DATABASE_URL is not configured' }, 500)
     }
 
     try {
@@ -41,9 +41,26 @@ export default {
 
       if (request.method === 'PATCH') {
         const id = url.searchParams.get('id') ?? ''
-        const completed = readCompleted(await readBody(request))
+        const body = await readBody(request)
+        const completed = readCompleted(body)
+        const text = readText(body)
+
+        if (completed !== null && isBulkCompletedUpdate(body)) {
+          const todos = await updateAllTodos(completed, userId)
+          return json({ todos })
+        }
+
         if (!id || completed === null) {
-          return json({ error: 'Todo id and completed state are required' }, 400)
+          if (!id || !text) {
+            return json({ error: 'Todo id and completed state or text are required' }, 400)
+          }
+
+          const todo = await updateTodoText(id, text, userId)
+          if (!todo) {
+            return json({ error: 'Todo not found' }, 404)
+          }
+
+          return json({ todo })
         }
 
         const todo = await updateTodo(id, completed, userId)
@@ -116,6 +133,30 @@ async function updateTodo(id: string, completed: boolean, userId: string) {
   return todo ?? null
 }
 
+async function updateTodoText(id: string, text: string, userId: string) {
+  const database = getSql()
+  const [todo] = (await database`
+    update todo
+    set text = ${text}, updated_at = now()
+    where id = ${id} and user_id = ${userId}
+    returning id, text, completed
+  `) as TodoRow[]
+
+  return todo ?? null
+}
+
+async function updateAllTodos(completed: boolean, userId: string) {
+  const database = getSql()
+  const rows = (await database`
+    update todo
+    set completed = ${completed}, updated_at = now()
+    where user_id = ${userId}
+    returning id, text, completed
+  `) as TodoRow[]
+
+  return rows
+}
+
 async function deleteTodo(id: string, userId: string) {
   const database = getSql()
   await database`delete from todo where id = ${id} and user_id = ${userId}`
@@ -128,7 +169,7 @@ async function deleteCompletedTodos(userId: string) {
 
 function getSql() {
   if (!authSql) {
-    throw new Error('POSTGRES_URL is not configured')
+    throw new Error('POSTGRES_URL or DATABASE_URL is not configured')
   }
 
   return authSql
@@ -154,6 +195,14 @@ function readCompleted(body: unknown) {
 
   const completed = (body as Record<string, unknown>).completed
   return typeof completed === 'boolean' ? completed : null
+}
+
+function isBulkCompletedUpdate(body: unknown) {
+  return Boolean(
+    body &&
+      typeof body === 'object' &&
+      (body as Record<string, unknown>).all === true,
+  )
 }
 
 function json(

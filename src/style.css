@@ -129,7 +129,7 @@ h1 {
 }
 
 .todo-form {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
 }
 
 .auth-form input,
@@ -207,10 +207,20 @@ h1 {
   gap: 12px;
 }
 
-.todo-item input {
+.todo-item input[type="checkbox"] {
   width: 20px;
   height: 20px;
   accent-color: var(--accent);
+}
+
+.todo-item .edit-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .todo-item span {
@@ -293,6 +303,25 @@ h1 {
   color: #ffffff;
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filters button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.filters button.is-active {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -330,5 +359,13 @@ h1 {
   .todo-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .filters {
+    justify-content: stretch;
+  }
+
+  .filters button {
+    flex: 1 1 90px;
   }
 }
