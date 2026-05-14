@@ -2,5 +2,15 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm vercel-build",
   "devCommand": "vite --port $PORT",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/auth/sign-in/:path*",
+      "destination": "/api/auth/[...all]"
+    },
+    {
+      "source": "/api/auth/sign-up/:path*",
+      "destination": "/api/auth/[...all]"
+    }
+  ]
 }
