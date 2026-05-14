@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const userId = requireUserId(req)
+    const userId = await requireUserId(req)
     const url = toRequestUrl(req)
 
     if (req.method === 'GET') {

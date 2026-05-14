@@ -30,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (req.method === 'GET' && path === 'get-session') {
-      res.status(200).json(getSession(req))
+      res.status(200).json(await getSession(req))
       return
     }
 

@@ -1,8 +1,9 @@
-import { createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { and, eq } from 'drizzle-orm'
+import { jwtVerify, SignJWT, type JWTPayload } from 'jose'
 import { db } from './drizzle.js'
 import { account, user } from './schema.js'
 
@@ -24,7 +25,6 @@ type AuthPayload = {
   uid: string
   name: string
   email: string
-  exp: number
 }
 
 export async function signUp(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -64,7 +64,7 @@ export async function signUp(req: VercelRequest, res: VercelResponse): Promise<v
     updatedAt: now,
   })
 
-  setSessionCookie(res, { uid: userId, name, email })
+  await setSessionCookie(res, { uid: userId, name, email })
   res.status(200).json({ user: { id: userId, name, email } })
 }
 
@@ -79,7 +79,7 @@ export async function signIn(req: VercelRequest, res: VercelResponse): Promise<v
     return
   }
 
-  setSessionCookie(res, {
+  await setSessionCookie(res, {
     uid: found.user.id,
     name: found.user.name,
     email: found.user.email,
@@ -98,8 +98,8 @@ export async function signOut(_req: VercelRequest, res: VercelResponse): Promise
   res.status(200).json({ ok: true })
 }
 
-export function getSession(req: VercelRequest): AuthSession | null {
-  const payload = readAuthPayload(req.headers)
+export async function getSession(req: VercelRequest): Promise<AuthSession | null> {
+  const payload = await readAuthPayload(req.headers)
   if (!payload) return null
 
   return {
@@ -111,8 +111,8 @@ export function getSession(req: VercelRequest): AuthSession | null {
   }
 }
 
-export function requireUserId(req: VercelRequest): string {
-  const authSession = getSession(req)
+export async function requireUserId(req: VercelRequest): Promise<string> {
+  const authSession = await getSession(req)
   if (!authSession) throw new Error('Unauthorized')
   return authSession.user.id
 }
@@ -148,15 +148,12 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
   return expected.length === actual.length && timingSafeEqual(expected, actual)
 }
 
-function setSessionCookie(
+async function setSessionCookie(
   res: VercelResponse,
   user: { uid: string; name: string; email: string },
-): void {
+): Promise<void> {
   const expiresAt = new Date(Date.now() + sessionMaxAgeSeconds * 1000)
-  const value = createAuthCookieValue({
-    ...user,
-    exp: expiresAt.getTime(),
-  })
+  const value = await createAuthCookieValue(user)
   res.setHeader('set-cookie', serializeCookie(sessionCookieName, encodeURIComponent(value), {
     expires: expiresAt,
     maxAge: sessionMaxAgeSeconds,
@@ -186,61 +183,46 @@ function serializeCookie(
   ].filter(Boolean).join('; ')
 }
 
-function readAuthPayload(headers: IncomingHttpHeaders): AuthPayload | null {
+async function readAuthPayload(headers: IncomingHttpHeaders): Promise<AuthPayload | null> {
   const cookies = parseCookies(readHeader(headers.cookie) ?? '')
   const value = cookies.get(sessionCookieName)
-  return value ? verifyAuthCookieValue(value) : null
+  return value ? await verifyAuthCookieValue(value) : null
 }
 
-function createAuthCookieValue(payload: AuthPayload): string {
-  const body = base64url(JSON.stringify(payload))
-  const signature = sign(body)
-  return `${body}.${signature}`
+async function createAuthCookieValue(payload: AuthPayload): Promise<string> {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(`${sessionMaxAgeSeconds}s`)
+    .sign(getAuthSecretKey())
 }
 
-function verifyAuthCookieValue(cookieValue: string): AuthPayload | null {
-  const dot = cookieValue.lastIndexOf('.')
-  if (dot <= 0) return null
-
-  const body = cookieValue.slice(0, dot)
-  const signature = cookieValue.slice(dot + 1)
-  const expectedSignature = sign(body)
-  if (!safeEqual(signature, expectedSignature)) return null
-
+async function verifyAuthCookieValue(cookieValue: string): Promise<AuthPayload | null> {
   try {
-    const payload = JSON.parse(unbase64url(body).toString('utf8')) as Partial<AuthPayload>
-    if (!payload.uid || typeof payload.uid !== 'string') return null
-    if (!payload.name || typeof payload.name !== 'string') return null
-    if (!payload.email || typeof payload.email !== 'string') return null
-    if (!payload.exp || typeof payload.exp !== 'number') return null
-    if (payload.exp <= Date.now()) return null
+    const { payload } = await jwtVerify(cookieValue, getAuthSecretKey(), {
+      algorithms: ['HS256'],
+    })
+    if (!hasAuthClaims(payload)) return null
     return {
       uid: payload.uid,
       name: payload.name,
       email: payload.email,
-      exp: payload.exp,
     }
   } catch {
     return null
   }
 }
 
-function sign(data: string): string {
-  return base64url(createHmac('sha256', getAuthSecret()).update(data).digest())
+function hasAuthClaims(payload: JWTPayload): payload is JWTPayload & AuthPayload {
+  return (
+    typeof payload.uid === 'string' &&
+    typeof payload.name === 'string' &&
+    typeof payload.email === 'string'
+  )
 }
 
-function safeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a)
-  const right = Buffer.from(b)
-  return left.length === right.length && timingSafeEqual(left, right)
-}
-
-function base64url(input: Buffer | string): string {
-  return Buffer.from(input).toString('base64url')
-}
-
-function unbase64url(input: string): Buffer {
-  return Buffer.from(input, 'base64url')
+function getAuthSecretKey(): Uint8Array {
+  return new TextEncoder().encode(getAuthSecret())
 }
 
 function getAuthSecret(): string {
