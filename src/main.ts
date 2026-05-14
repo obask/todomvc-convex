@@ -1,5 +1,12 @@
 import './style.css'
-import { createAuthClient } from 'better-auth/client'
+
+type Session = {
+  user: {
+    id: string
+    name?: string
+    email: string
+  }
+}
 
 type Todo = {
   id: string
@@ -7,21 +14,14 @@ type Todo = {
   completed: boolean
 }
 
-type SessionUser = {
-  id: string
-  name?: string | null
-  email?: string | null
-}
+type AuthMode = 'sign-in' | 'sign-up'
 
-const authClient = createAuthClient({
-  baseURL: `${window.location.origin}/api/auth`,
-})
-
+let session: Session | null = null
 let todos: Todo[] = []
-let currentUser: SessionUser | null = null
 let isSaving = false
-let isAuthLoading = false
-let authMode: 'login' | 'signup' = 'login'
+let authMode: AuthMode = 'sign-in'
+let filter: 'all' | 'active' | 'completed' = 'all'
+let editingId: string | null = null
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="todo-app" aria-labelledby="app-title">
@@ -30,39 +30,38 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <p class="eyebrow">Postgres list</p>
         <h1 id="app-title">Todos</h1>
       </div>
-      <div class="auth-panel" aria-live="polite">
-        <form class="auth-form" id="auth-form">
-          <label class="sr-only" for="email-input">Email</label>
-          <input
-            id="email-input"
-            name="email"
-            type="email"
-            placeholder="Email"
-            autocomplete="email"
-            required
-          />
-          <label class="sr-only" for="password-input">Password</label>
-          <input
-            id="password-input"
-            name="password"
-            type="password"
-            placeholder="Password"
-            autocomplete="current-password"
-            required
-          />
-          <button id="auth-submit" type="submit">Log in</button>
-          <button class="secondary-button" id="toggle-auth-mode" type="button">
-            Create account
-          </button>
-        </form>
-        <div class="user-panel" id="user-panel" hidden>
-          <span id="user-label"></span>
-          <button id="sign-out" type="button">Sign out</button>
-        </div>
-      </div>
+      <button id="sign-out" class="secondary-button" type="button" hidden>Sign out</button>
     </header>
 
+    <section class="auth-panel" id="auth-panel" aria-label="Account">
+      <div class="auth-tabs" role="tablist" aria-label="Auth mode">
+        <button id="sign-in-tab" type="button" aria-selected="true">Sign in</button>
+        <button id="sign-up-tab" type="button" aria-selected="false">Sign up</button>
+      </div>
+      <form class="auth-form" id="auth-form">
+        <label>
+          <span>Email</span>
+          <input id="auth-email" name="email" type="email" autocomplete="email" required />
+        </label>
+        <label>
+          <span>Password</span>
+          <input
+            id="auth-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            minlength="8"
+            required
+          />
+        </label>
+        <button id="auth-submit" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <p class="signed-in-state" id="signed-in-state" hidden></p>
+
     <form class="todo-form" id="todo-form">
+      <button id="toggle-all" type="button" aria-label="Toggle all">❯</button>
       <label class="sr-only" for="todo-input">New todo</label>
       <input
         id="todo-input"
@@ -83,62 +82,73 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <footer class="todo-footer">
       <span id="todo-count">0 items left</span>
+      <div class="filters" id="filters">
+        <button type="button" data-filter="all">All</button>
+        <button type="button" data-filter="active">Active</button>
+        <button type="button" data-filter="completed">Completed</button>
+      </div>
       <button id="clear-completed" type="button">Clear completed</button>
     </footer>
   </main>
 `
 
 const form = document.querySelector<HTMLFormElement>('#todo-form')!
-const authForm = document.querySelector<HTMLFormElement>('#auth-form')!
 const input = document.querySelector<HTMLInputElement>('#todo-input')!
-const emailInput = document.querySelector<HTMLInputElement>('#email-input')!
-const passwordInput = document.querySelector<HTMLInputElement>('#password-input')!
-const addButton = document.querySelector<HTMLButtonElement>('.todo-form button')!
-const authSubmitButton = document.querySelector<HTMLButtonElement>('#auth-submit')!
-const toggleAuthModeButton = document.querySelector<HTMLButtonElement>('#toggle-auth-mode')!
+const addButton = document.querySelector<HTMLButtonElement>('.todo-form button[type="submit"]')!
+const toggleAllButton = document.querySelector<HTMLButtonElement>('#toggle-all')!
+const authPanel = document.querySelector<HTMLElement>('#auth-panel')!
+const authForm = document.querySelector<HTMLFormElement>('#auth-form')!
+const authEmail = document.querySelector<HTMLInputElement>('#auth-email')!
+const authPassword = document.querySelector<HTMLInputElement>('#auth-password')!
+const authSubmit = document.querySelector<HTMLButtonElement>('#auth-submit')!
+const signInTab = document.querySelector<HTMLButtonElement>('#sign-in-tab')!
+const signUpTab = document.querySelector<HTMLButtonElement>('#sign-up-tab')!
+const signOutButton = document.querySelector<HTMLButtonElement>('#sign-out')!
+const signedInState = document.querySelector<HTMLParagraphElement>('#signed-in-state')!
 const list = document.querySelector<HTMLUListElement>('#todo-list')!
 const emptyState = document.querySelector<HTMLParagraphElement>('#empty-state')!
 const errorState = document.querySelector<HTMLParagraphElement>('#error-state')!
 const todoCount = document.querySelector<HTMLSpanElement>('#todo-count')!
 const clearCompleted = document.querySelector<HTMLButtonElement>('#clear-completed')!
-const userPanel = document.querySelector<HTMLDivElement>('#user-panel')!
-const userLabel = document.querySelector<HTMLSpanElement>('#user-label')!
-const signOutButton = document.querySelector<HTMLButtonElement>('#sign-out')!
+const filters = document.querySelector<HTMLDivElement>('#filters')!
 
 authForm.addEventListener('submit', async (event) => {
   event.preventDefault()
+  if (isSaving) return
 
-  const email = emailInput.value.trim()
-  const password = passwordInput.value
-  if (!email || !password || isAuthLoading) return
+  const email = authEmail.value.trim()
+  const password = authPassword.value
+  if (!email || !password) return
 
-  await saveAuthChange(async () => {
-    if (authMode === 'login') {
-      const { error } = await authClient.signIn.email({ email, password, rememberMe: true })
-      if (error) throw new Error(error.message ?? 'Sign in failed')
-    } else {
-      const { error } = await authClient.signUp.email({ email, password, name: email })
-      if (error) throw new Error(error.message ?? 'Sign up failed')
-    }
+  await saveChange(async () => {
+    const path =
+      authMode === 'sign-in' ? '/api/auth/sign-in/email' : '/api/auth/sign-up/email'
+    const body =
+      authMode === 'sign-in'
+        ? { email, password }
+        : { email, password, name: email.split('@')[0] || email }
 
-    passwordInput.value = ''
-    await refreshSession()
-    await loadTodos()
+    await requestJson(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+
+    authPassword.value = ''
+    await loadSession()
   })
 })
 
-toggleAuthModeButton.addEventListener('click', () => {
-  authMode = authMode === 'login' ? 'signup' : 'login'
-  setError('')
-  render()
-})
+signInTab.addEventListener('click', () => setAuthMode('sign-in'))
+signUpTab.addEventListener('click', () => setAuthMode('sign-up'))
 
 signOutButton.addEventListener('click', async () => {
-  if (isAuthLoading) return
+  if (isSaving) return
 
-  await saveAuthChange(async () => {
-    await authClient.signOut()
-    currentUser = null
+  await saveChange(async () => {
+    await requestJson('/api/auth/sign-out', {
+      method: 'POST',
+    })
+    session = null
     todos = []
   })
 })
@@ -230,10 +240,80 @@ clearCompleted.addEventListener('click', async () => {
   )
 })
 
+toggleAllButton.addEventListener('click', async () => {
+  if (isSaving) return
+
+  const nextCompleted = !todos.every((todo) => todo.completed)
+  const previousTodos = todos
+  todos = todos.map((todo) => ({ ...todo, completed: nextCompleted }))
+  render()
+
+  await saveChange(
+    async () => {
+      const data = await requestJson<{ todos: Todo[] }>('/api/todos', {
+        method: 'PATCH',
+        body: JSON.stringify({ all: true, completed: nextCompleted }),
+      })
+      todos = data.todos
+    },
+    () => {
+      todos = previousTodos
+    },
+  )
+})
+
+filters.addEventListener('click', (event) => {
+  const button = event.target
+  if (!(button instanceof HTMLButtonElement)) return
+
+  const next = button.dataset.filter
+  if (next !== 'all' && next !== 'active' && next !== 'completed') return
+  filter = next
+  render()
+})
+
+list.addEventListener('dblclick', (event) => {
+  const target = event.target
+  if (!(target instanceof HTMLElement) || isSaving) return
+
+  const id = target.dataset.editId
+  if (!id) return
+  editingId = id
+  render()
+  document.querySelector<HTMLInputElement>(`[data-edit-input="${CSS.escape(id)}"]`)?.focus()
+})
+
+list.addEventListener('focusout', async (event) => {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+
+  const id = target.dataset.editInput
+  if (!id) return
+  await commitEdit(id, target.value)
+})
+
+list.addEventListener('keydown', async (event) => {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+
+  const id = target.dataset.editInput
+  if (!id) return
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    await commitEdit(id, target.value)
+  }
+
+  if (event.key === 'Escape') {
+    editingId = null
+    render()
+  }
+})
+
 async function loadTodos() {
   setError('')
 
-  if (!currentUser) {
+  if (!session) {
     todos = []
     render()
     return
@@ -249,8 +329,21 @@ async function loadTodos() {
   }
 }
 
+async function loadSession() {
+  setError('')
+
+  try {
+    const data = await requestJson<Session | null>('/api/auth/get-session')
+    session = data
+  } catch {
+    session = null
+  }
+
+  await loadTodos()
+}
+
 async function saveChange(change: () => Promise<void>, rollback?: () => void) {
-  isSaving = true
+  setSaving(true)
   setError('')
   render()
 
@@ -260,54 +353,45 @@ async function saveChange(change: () => Promise<void>, rollback?: () => void) {
     rollback?.()
     setError((error as Error).message)
   } finally {
-    isSaving = false
+    setSaving(false)
     render()
   }
-}
-
-async function saveAuthChange(change: () => Promise<void>) {
-  isAuthLoading = true
-  setError('')
-  render()
-
-  try {
-    await change()
-  } catch (error) {
-    setError((error as Error).message)
-  } finally {
-    isAuthLoading = false
-    render()
-  }
-}
-
-async function refreshSession() {
-  const { data } = await authClient.getSession()
-  currentUser = (data?.user as SessionUser | undefined) ?? null
 }
 
 function render() {
-  list.innerHTML = todos.map(createTodoMarkup).join('')
+  const visibleTodos = todos.filter((todo) => {
+    if (filter === 'active') return !todo.completed
+    if (filter === 'completed') return todo.completed
+    return true
+  })
+
+  list.innerHTML = visibleTodos.map(createTodoMarkup).join('')
+
+  authPanel.hidden = Boolean(session)
+  signOutButton.hidden = !session
+  signedInState.hidden = !session
+  signedInState.textContent = session ? `Signed in as ${session.user.email}` : ''
 
   const remaining = todos.filter((todo) => !todo.completed).length
   todoCount.textContent = `${remaining} ${remaining === 1 ? 'item' : 'items'} left`
   emptyState.textContent = getEmptyStateText()
   emptyState.hidden = todos.length > 0
-  clearCompleted.disabled = isSaving || !currentUser || !todos.some((todo) => todo.completed)
-  addButton.disabled = isSaving || !currentUser
-  input.disabled = isSaving || !currentUser
-  input.placeholder = currentUser ? 'What needs to be done?' : 'Log in to manage todos'
-  authForm.hidden = Boolean(currentUser)
-  userPanel.hidden = !currentUser
-  userLabel.textContent = currentUser?.email ?? currentUser?.name ?? 'Signed in'
-  authSubmitButton.textContent = authMode === 'login' ? 'Log in' : 'Sign up'
-  toggleAuthModeButton.textContent =
-    authMode === 'login' ? 'Create account' : 'Use existing account'
-  passwordInput.autocomplete = authMode === 'login' ? 'current-password' : 'new-password'
-  authSubmitButton.disabled = isAuthLoading
-  toggleAuthModeButton.disabled = isAuthLoading
-  emailInput.disabled = isAuthLoading
-  passwordInput.disabled = isAuthLoading
-  signOutButton.disabled = isAuthLoading
+  clearCompleted.disabled = isSaving || !todos.some((todo) => todo.completed)
+  toggleAllButton.disabled = isSaving || !session || todos.length === 0
+  addButton.disabled = isSaving || !session
+  input.disabled = isSaving || !session
+  form.hidden = !session
+  clearCompleted.hidden = !session
+  filters.hidden = !session
+  filters.querySelectorAll('button').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.filter === filter)
+  })
+  authSubmit.disabled = isSaving
+  signOutButton.disabled = isSaving
+}
+
+function setSaving(value: boolean) {
+  isSaving = value
 }
 
 function setError(message: string) {
@@ -315,7 +399,23 @@ function setError(message: string) {
   errorState.hidden = !message
 }
 
+function setAuthMode(mode: AuthMode) {
+  authMode = mode
+  signInTab.setAttribute('aria-selected', String(mode === 'sign-in'))
+  signUpTab.setAttribute('aria-selected', String(mode === 'sign-up'))
+  authSubmit.textContent = mode === 'sign-in' ? 'Sign in' : 'Create account'
+  authPassword.autocomplete =
+    mode === 'sign-in' ? 'current-password' : 'new-password'
+}
+
+function getEmptyStateText() {
+  if (!errorState.hidden) return 'Unable to load todos.'
+  if (!session) return 'Sign in to load your todos.'
+  return 'No todos yet.'
+}
+
 function createTodoMarkup(todo: Todo) {
+  const text = escapeHtml(todo.text)
   return `
     <li class="todo-item ${todo.completed ? 'is-completed' : ''}">
       <label>
@@ -325,7 +425,11 @@ function createTodoMarkup(todo: Todo) {
           ${todo.completed ? 'checked' : ''}
           ${isSaving ? 'disabled' : ''}
         />
-        <span>${escapeHtml(todo.text)}</span>
+        ${
+          editingId === todo.id
+            ? `<input class="edit-input" data-edit-input="${todo.id}" value="${text}" />`
+            : `<span data-edit-id="${todo.id}">${text}</span>`
+        }
       </label>
       <button
         type="button"
@@ -339,36 +443,87 @@ function createTodoMarkup(todo: Todo) {
   `
 }
 
+async function commitEdit(id: string, value: string) {
+  if (editingId !== id || isSaving) return
+
+  editingId = null
+  const text = value.trim()
+  if (!text) {
+    const previousTodos = todos
+    todos = todos.filter((todo) => todo.id !== id)
+    render()
+    await saveChange(
+      async () => {
+        await requestJson(`/api/todos?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      },
+      () => {
+        todos = previousTodos
+      },
+    )
+    return
+  }
+
+  const previousTodos = todos
+  todos = todos.map((todo) => (todo.id === id ? { ...todo, text } : todo))
+  render()
+  await saveChange(
+    async () => {
+      const todo = await requestTodo<Todo>(`/api/todos?id=${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ text }),
+      })
+      todos = todos.map((item) => (item.id === todo.id ? todo : item))
+    },
+    () => {
+      todos = previousTodos
+    },
+  )
+}
+
 async function requestTodo<TodoResponse>(url: string, init?: RequestInit) {
   const data = await requestJson<{ todo: TodoResponse }>(url, init)
   return data.todo
 }
 
 async function requestJson<TResponse>(url: string, init?: RequestInit) {
-  const headers = new Headers(init?.headers)
-  if (init?.body !== undefined && init.body !== null && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
-
-  const response = await fetch(url, {
+  const response = await fetch(toApiUrl(url), {
+    headers: {
+      'Content-Type': 'application/json',
+      ...init?.headers,
+    },
     ...init,
-    headers,
-    credentials: 'include',
   })
 
   if (response.status === 204) return undefined as TResponse
 
-  const data = await response.json()
+  const data = await readJson(response)
   if (!response.ok) {
-    throw new Error(data.error ?? 'Request failed')
+    throw new Error(readErrorMessage(data))
   }
 
   return data as TResponse
 }
 
-function getEmptyStateText() {
-  if (!errorState.hidden) return 'Unable to load todos.'
-  return currentUser ? 'No todos yet.' : 'Log in to load your todos.'
+async function readJson(response: Response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+function readErrorMessage(data: unknown) {
+  if (!data || typeof data !== 'object') return 'Request failed'
+
+  const record = data as Record<string, unknown>
+  if (typeof record.error === 'string') return record.error
+  if (typeof record.message === 'string') return record.message
+
+  return 'Request failed'
+}
+
+function toApiUrl(path: string) {
+  return new URL(path, window.location.origin).toString()
 }
 
 function escapeHtml(value: string) {
@@ -385,7 +540,5 @@ function escapeHtml(value: string) {
   })
 }
 
-await saveAuthChange(async () => {
-  await refreshSession()
-  await loadTodos()
-})
+setAuthMode(authMode)
+loadSession()

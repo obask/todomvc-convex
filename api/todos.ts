@@ -54,11 +54,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (req.method === 'PATCH') {
       const id = url.searchParams.get('id') ?? ''
-      const completed = readCompleted(await readJson(req))
-      if (!id || completed === null) {
-        res.status(400).json({ error: 'Todo id and completed state are required' })
+      const body = await readJson(req)
+      const completed = readCompleted(body)
+      const text = readText(body)
+
+      if (completed !== null && isBulkCompletedUpdate(body)) {
+        const todos = await updateAllTodos(completed, userId)
+        res.status(200).json({ todos })
         return
       }
+
+      if (completed === null) {
+        if (!id || !text) {
+          res.status(400).json({ error: 'Todo id and completed state or text are required' })
+          return
+        }
+
+        const todo = await updateTodoText(id, text, userId)
+        if (!todo) {
+          res.status(404).json({ error: 'Todo not found' })
+          return
+        }
+        res.status(200).json({ todo })
+        return
+      }
+
+      if (!id) {
+        res.status(400).json({ error: 'Todo id is required' })
+        return
+      }
+
       const todo = await updateTodo(id, completed, userId)
       if (!todo) {
         res.status(404).json({ error: 'Todo not found' })
@@ -162,6 +187,23 @@ async function updateTodo(id: string, completed: boolean, userId: string) {
   return updated ?? null
 }
 
+async function updateTodoText(id: string, text: string, userId: string) {
+  const [updated] = await db
+    .update(todo)
+    .set({ text, updatedAt: sql`now()` })
+    .where(and(eq(todo.id, id), eq(todo.userId, userId)))
+    .returning(todoSelection)
+  return updated ?? null
+}
+
+async function updateAllTodos(completed: boolean, userId: string) {
+  return db
+    .update(todo)
+    .set({ completed, updatedAt: sql`now()` })
+    .where(eq(todo.userId, userId))
+    .returning(todoSelection)
+}
+
 async function deleteTodo(id: string, userId: string) {
   await db.delete(todo).where(and(eq(todo.id, id), eq(todo.userId, userId)))
 }
@@ -195,4 +237,12 @@ function readCompleted(body: unknown): boolean | null {
   if (!body || typeof body !== 'object') return null
   const completed = (body as Record<string, unknown>).completed
   return typeof completed === 'boolean' ? completed : null
+}
+
+function isBulkCompletedUpdate(body: unknown) {
+  return Boolean(
+    body &&
+      typeof body === 'object' &&
+      (body as Record<string, unknown>).all === true,
+  )
 }

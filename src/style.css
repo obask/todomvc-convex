@@ -58,10 +58,10 @@ button:disabled {
 }
 
 .app-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  display: flex;
   align-items: end;
-  gap: 18px;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .eyebrow {
@@ -80,85 +80,9 @@ h1 {
   letter-spacing: 0;
 }
 
-.auth-panel {
-  min-width: 0;
-}
-
-.auth-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.auth-form input {
-  width: 100%;
-  min-height: 40px;
-  padding: 0 12px;
-  color: var(--text);
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  outline: none;
-}
-
-.auth-form input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(31, 122, 92, 0.16);
-}
-
-.auth-form button,
-.user-panel button,
-.todo-form button,
-.todo-footer button {
-  min-height: 44px;
-  padding: 0 16px;
-  color: #ffffff;
-  background: var(--accent);
-  border: 0;
-  border-radius: 6px;
-  font-weight: 700;
-}
-
-.auth-form button:hover,
-.user-panel button:hover:not(:disabled),
-.todo-form button:hover,
-.todo-footer button:hover:not(:disabled) {
-  background: var(--accent-dark);
-}
-
-.auth-form .secondary-button {
-  color: var(--accent);
-  background: transparent;
-  border: 1px solid var(--border);
-}
-
-.auth-form .secondary-button:hover:not(:disabled) {
-  color: #ffffff;
-  background: var(--accent-dark);
-}
-
-.auth-form[hidden],
-.user-panel[hidden] {
-  display: none;
-}
-
-.user-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-}
-
-.user-panel span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+.auth-panel,
 .todo-form {
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 10px;
   padding: 12px;
   background: var(--panel);
@@ -167,6 +91,48 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.auth-tabs button {
+  min-height: 38px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font-weight: 700;
+}
+
+.auth-tabs button[aria-selected="true"] {
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 1px 6px rgba(22, 34, 51, 0.12);
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.todo-form {
+  grid-template-columns: auto 1fr auto;
+}
+
+.auth-form input,
 .todo-form input {
   width: 100%;
   min-height: 48px;
@@ -178,9 +144,30 @@ h1 {
   outline: none;
 }
 
+.auth-form input:focus,
 .todo-form input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(31, 122, 92, 0.16);
+}
+
+.auth-form button,
+.todo-form button,
+.todo-footer button,
+.secondary-button {
+  min-height: 44px;
+  padding: 0 16px;
+  color: #ffffff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.auth-form button:hover,
+.todo-form button:hover,
+.todo-footer button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled) {
+  background: var(--accent-dark);
 }
 
 .todo-panel {
@@ -220,10 +207,20 @@ h1 {
   gap: 12px;
 }
 
-.todo-item input {
+.todo-item input[type="checkbox"] {
   width: 20px;
   height: 20px;
   accent-color: var(--accent);
+}
+
+.todo-item .edit-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .todo-item span {
@@ -262,6 +259,19 @@ h1 {
   display: none;
 }
 
+.signed-in-state {
+  margin: 0;
+  color: var(--muted);
+}
+
+.signed-in-state[hidden],
+.auth-panel[hidden],
+.todo-form[hidden],
+.secondary-button[hidden],
+.todo-footer button[hidden] {
+  display: none;
+}
+
 .error-state {
   margin: 0;
   padding: 12px 14px;
@@ -293,6 +303,25 @@ h1 {
   color: #ffffff;
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filters button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.filters button.is-active {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -309,31 +338,34 @@ h1 {
     padding: 32px 14px;
   }
 
-  .app-header {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
+  .app-header,
   .todo-form,
   .todo-item,
   .todo-footer {
     grid-template-columns: 1fr;
   }
 
-  .auth-form button,
-  .user-panel button,
+  .app-header {
+    display: grid;
+    align-items: start;
+  }
+
+  .secondary-button,
   .todo-form button,
   .todo-footer button {
     width: 100%;
   }
 
-  .user-panel {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
   .todo-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .filters {
+    justify-content: stretch;
+  }
+
+  .filters button {
+    flex: 1 1 90px;
   }
 }
