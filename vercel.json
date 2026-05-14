@@ -5,11 +5,7 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/auth/sign-in/:path*",
-      "destination": "/api/auth/[...all]"
-    },
-    {
-      "source": "/api/auth/sign-up/:path*",
+      "source": "/api/auth/:path*",
       "destination": "/api/auth/[...all]"
     }
   ]
