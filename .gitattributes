@@ -1,1 +1,2 @@
-pnpm-lock.yaml -diff linguist-generated=true
+bun.lock linguist-generated=true -diff
+pnpm-lock.yaml linguist-generated=true -diff
