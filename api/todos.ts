@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { and, asc, eq, sql } from 'drizzle-orm'
-import { auth } from './lib/auth.js'
+import { requireUserId } from './lib/auth.js'
 import { hasDatabaseConfig } from './lib/db.js'
 import { db } from './lib/drizzle.js'
 import { todo } from './lib/schema.js'
@@ -11,14 +11,6 @@ type TodoRow = {
   completed: boolean
 }
 
-type AuthSession = {
-  user?: {
-    id?: string
-  } | null
-}
-
-const SESSION_TTL_MS = 30_000
-const sessionCache = new Map<string, { userId: string; expiresAt: number }>()
 const todoSelection = {
   id: todo.id,
   text: todo.text,
@@ -32,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const userId = await requireUserId(req)
+    const userId = requireUserId(req)
     const url = toRequestUrl(req)
 
     if (req.method === 'GET') {
@@ -121,45 +113,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 }
 
-async function requireUserId(req: VercelRequest): Promise<string> {
-  const cookie = readCookieHeader(req)
-  if (!cookie) throw new Error('Unauthorized')
-
-  const cached = sessionCache.get(cookie)
-  if (cached && cached.expiresAt > Date.now()) return cached.userId
-
-  const session = (await auth.api.getSession({
-    headers: toHeaders(req.headers),
-    query: { disableRefresh: true },
-  })) as AuthSession | null
-  const userId = session?.user?.id
-  if (!userId) throw new Error('Unauthorized')
-
-  sessionCache.set(cookie, { userId, expiresAt: Date.now() + SESSION_TTL_MS })
-  return userId
-}
-
-function readCookieHeader(req: VercelRequest): string {
-  const value = req.headers.cookie
-  if (Array.isArray(value)) return value.join('; ')
-  return value ?? ''
-}
-
 function toRequestUrl(req: VercelRequest): URL {
   const host = (req.headers.host as string | undefined) ?? 'localhost'
   return new URL(req.url ?? '/', `http://${host}`)
-}
-
-function toHeaders(source: VercelRequest['headers']): Headers {
-  const headers = new Headers()
-  for (const [name, value] of Object.entries(source)) {
-    if (Array.isArray(value)) {
-      for (const item of value) headers.append(name, item)
-    } else if (value !== undefined) {
-      headers.set(name, value)
-    }
-  }
-  return headers
 }
 
 async function listTodos(userId: string) {
