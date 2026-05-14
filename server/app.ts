@@ -54,7 +54,7 @@ export const app = new Elysia({ prefix: '/api/todos' })
       return { error: 'Not found' }
     }
 
-    if (error instanceof Error && error.message === 'POSTGRES_URL is not configured') {
+    if (error instanceof Error && error.message === 'POSTGRES_URL or DATABASE_URL is not configured') {
       set.status = 500
       return { error: error.message }
     }
@@ -107,6 +107,41 @@ export const app = new Elysia({ prefix: '/api/todos' })
     '/',
     async ({ body, query, request }) => {
       const session = await getSession(request)
+      if (body.all === true) {
+        if (body.completed === undefined) {
+          return status(400, { error: 'Todo completed state is required' })
+        }
+
+        const todos = await updateAllTodos(body.completed, session.user.id)
+        return { todos }
+      }
+
+      if (body.text !== undefined) {
+        if (!query.id) {
+          return status(400, { error: 'Todo id is required' })
+        }
+
+        const text = body.text.trim()
+        if (!text) {
+          return status(400, { error: 'Todo text is required' })
+        }
+
+        const todo = await updateTodoText(query.id, text, session.user.id)
+        if (!todo) {
+          return status(404, { error: 'Todo not found' })
+        }
+
+        return { todo }
+      }
+
+      if (!query.id) {
+        return status(400, { error: 'Todo id is required' })
+      }
+
+      if (body.completed === undefined) {
+        return status(400, { error: 'Todo completed state is required' })
+      }
+
       const todo = await updateTodo(query.id, body.completed, session.user.id)
       if (!todo) {
         return status(404, { error: 'Todo not found' })
@@ -115,10 +150,18 @@ export const app = new Elysia({ prefix: '/api/todos' })
       return { todo }
     },
     {
-      query: t.Object({ id: t.String({ minLength: 1 }) }),
-      body: t.Object({ completed: t.Boolean() }),
+      query: t.Object({ id: t.Optional(t.String({ minLength: 1 })) }),
+      body: t.Object({
+        completed: t.Optional(t.Boolean()),
+        all: t.Optional(t.Boolean()),
+        text: t.Optional(t.String()),
+      }),
       response: {
-        200: t.Object({ todo: todoSchema }),
+        200: t.Union([
+          t.Object({ todo: todoSchema }),
+          t.Object({ todos: t.Array(todoSchema) }),
+        ]),
+        400: errorResponse,
         404: errorResponse,
         500: errorResponse,
       },
@@ -191,6 +234,30 @@ async function updateTodo(id: string, completed: boolean, userId: string) {
   return todo ?? null
 }
 
+async function updateTodoText(id: string, text: string, userId: string) {
+  const database = getSql()
+  const [todo] = (await database`
+    update todo
+    set text = ${text}, updated_at = now()
+    where id = ${id} and user_id = ${userId}
+    returning id, text, completed
+  `) as TodoRow[]
+
+  return todo ?? null
+}
+
+async function updateAllTodos(completed: boolean, userId: string) {
+  const database = getSql()
+  const rows = (await database`
+    update todo
+    set completed = ${completed}, updated_at = now()
+    where user_id = ${userId}
+    returning id, text, completed
+  `) as TodoRow[]
+
+  return rows
+}
+
 async function deleteTodo(id: string, userId: string) {
   const database = getSql()
   await database`delete from todo where id = ${id} and user_id = ${userId}`
@@ -203,7 +270,7 @@ async function deleteCompletedTodos(userId: string) {
 
 function getSql() {
   if (!sql) {
-    throw new Error('POSTGRES_URL is not configured')
+    throw new Error('POSTGRES_URL or DATABASE_URL is not configured')
   }
 
   return sql

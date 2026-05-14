@@ -20,6 +20,8 @@ let session: Session | null = null
 let todos: Todo[] = []
 let isSaving = false
 let authMode: AuthMode = 'sign-in'
+let filter: 'all' | 'active' | 'completed' = 'all'
+let editingId: string | null = null
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="todo-app" aria-labelledby="app-title">
@@ -59,6 +61,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <p class="signed-in-state" id="signed-in-state" hidden></p>
 
     <form class="todo-form" id="todo-form">
+      <button id="toggle-all" type="button" aria-label="Toggle all">❯</button>
       <label class="sr-only" for="todo-input">New todo</label>
       <input
         id="todo-input"
@@ -79,6 +82,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <footer class="todo-footer">
       <span id="todo-count">0 items left</span>
+      <div class="filters" id="filters">
+        <button type="button" data-filter="all">All</button>
+        <button type="button" data-filter="active">Active</button>
+        <button type="button" data-filter="completed">Completed</button>
+      </div>
       <button id="clear-completed" type="button">Clear completed</button>
     </footer>
   </main>
@@ -86,7 +94,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>('#todo-form')!
 const input = document.querySelector<HTMLInputElement>('#todo-input')!
-const addButton = document.querySelector<HTMLButtonElement>('.todo-form button')!
+const addButton = document.querySelector<HTMLButtonElement>('.todo-form button[type="submit"]')!
+const toggleAllButton = document.querySelector<HTMLButtonElement>('#toggle-all')!
 const authPanel = document.querySelector<HTMLElement>('#auth-panel')!
 const authForm = document.querySelector<HTMLFormElement>('#auth-form')!
 const authEmail = document.querySelector<HTMLInputElement>('#auth-email')!
@@ -101,6 +110,7 @@ const emptyState = document.querySelector<HTMLParagraphElement>('#empty-state')!
 const errorState = document.querySelector<HTMLParagraphElement>('#error-state')!
 const todoCount = document.querySelector<HTMLSpanElement>('#todo-count')!
 const clearCompleted = document.querySelector<HTMLButtonElement>('#clear-completed')!
+const filters = document.querySelector<HTMLDivElement>('#filters')!
 
 authForm.addEventListener('submit', async (event) => {
   event.preventDefault()
@@ -230,6 +240,76 @@ clearCompleted.addEventListener('click', async () => {
   )
 })
 
+toggleAllButton.addEventListener('click', async () => {
+  if (isSaving) return
+
+  const nextCompleted = !todos.every((todo) => todo.completed)
+  const previousTodos = todos
+  todos = todos.map((todo) => ({ ...todo, completed: nextCompleted }))
+  render()
+
+  await saveChange(
+    async () => {
+      const data = await requestJson<{ todos: Todo[] }>('/api/todos', {
+        method: 'PATCH',
+        body: JSON.stringify({ all: true, completed: nextCompleted }),
+      })
+      todos = data.todos
+    },
+    () => {
+      todos = previousTodos
+    },
+  )
+})
+
+filters.addEventListener('click', (event) => {
+  const button = event.target
+  if (!(button instanceof HTMLButtonElement)) return
+
+  const next = button.dataset.filter
+  if (next !== 'all' && next !== 'active' && next !== 'completed') return
+  filter = next
+  render()
+})
+
+list.addEventListener('dblclick', (event) => {
+  const target = event.target
+  if (!(target instanceof HTMLElement) || isSaving) return
+
+  const id = target.dataset.editId
+  if (!id) return
+  editingId = id
+  render()
+  document.querySelector<HTMLInputElement>(`[data-edit-input="${CSS.escape(id)}"]`)?.focus()
+})
+
+list.addEventListener('focusout', async (event) => {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+
+  const id = target.dataset.editInput
+  if (!id) return
+  await commitEdit(id, target.value)
+})
+
+list.addEventListener('keydown', async (event) => {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+
+  const id = target.dataset.editInput
+  if (!id) return
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    await commitEdit(id, target.value)
+  }
+
+  if (event.key === 'Escape') {
+    editingId = null
+    render()
+  }
+})
+
 async function loadTodos() {
   setError('')
 
@@ -279,7 +359,13 @@ async function saveChange(change: () => Promise<void>, rollback?: () => void) {
 }
 
 function render() {
-  list.innerHTML = todos.map(createTodoMarkup).join('')
+  const visibleTodos = todos.filter((todo) => {
+    if (filter === 'active') return !todo.completed
+    if (filter === 'completed') return todo.completed
+    return true
+  })
+
+  list.innerHTML = visibleTodos.map(createTodoMarkup).join('')
 
   authPanel.hidden = Boolean(session)
   signOutButton.hidden = !session
@@ -291,10 +377,15 @@ function render() {
   emptyState.textContent = getEmptyStateText()
   emptyState.hidden = todos.length > 0
   clearCompleted.disabled = isSaving || !todos.some((todo) => todo.completed)
+  toggleAllButton.disabled = isSaving || !session || todos.length === 0
   addButton.disabled = isSaving || !session
   input.disabled = isSaving || !session
   form.hidden = !session
   clearCompleted.hidden = !session
+  filters.hidden = !session
+  filters.querySelectorAll('button').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.filter === filter)
+  })
   authSubmit.disabled = isSaving
   signOutButton.disabled = isSaving
 }
@@ -324,6 +415,7 @@ function getEmptyStateText() {
 }
 
 function createTodoMarkup(todo: Todo) {
+  const text = escapeHtml(todo.text)
   return `
     <li class="todo-item ${todo.completed ? 'is-completed' : ''}">
       <label>
@@ -333,7 +425,11 @@ function createTodoMarkup(todo: Todo) {
           ${todo.completed ? 'checked' : ''}
           ${isSaving ? 'disabled' : ''}
         />
-        <span>${escapeHtml(todo.text)}</span>
+        ${
+          editingId === todo.id
+            ? `<input class="edit-input" data-edit-input="${todo.id}" value="${text}" />`
+            : `<span data-edit-id="${todo.id}">${text}</span>`
+        }
       </label>
       <button
         type="button"
@@ -345,6 +441,43 @@ function createTodoMarkup(todo: Todo) {
       </button>
     </li>
   `
+}
+
+async function commitEdit(id: string, value: string) {
+  if (editingId !== id || isSaving) return
+
+  editingId = null
+  const text = value.trim()
+  if (!text) {
+    const previousTodos = todos
+    todos = todos.filter((todo) => todo.id !== id)
+    render()
+    await saveChange(
+      async () => {
+        await requestJson(`/api/todos?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      },
+      () => {
+        todos = previousTodos
+      },
+    )
+    return
+  }
+
+  const previousTodos = todos
+  todos = todos.map((todo) => (todo.id === id ? { ...todo, text } : todo))
+  render()
+  await saveChange(
+    async () => {
+      const todo = await requestTodo<Todo>(`/api/todos?id=${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ text }),
+      })
+      todos = todos.map((item) => (item.id === todo.id ? todo : item))
+    },
+    () => {
+      todos = previousTodos
+    },
+  )
 }
 
 async function requestTodo<TodoResponse>(url: string, init?: RequestInit) {
