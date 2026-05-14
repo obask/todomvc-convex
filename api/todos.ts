@@ -96,8 +96,8 @@ export default {
 async function listTodos(userId: string) {
   const database = getSql()
   const rows = (await database`
-    select id, text, completed
-    from todo
+    select id, title as text, is_completed as completed
+    from todos
     where user_id = ${userId}
     order by created_at asc, id asc
   `) as TodoRow[]
@@ -107,10 +107,11 @@ async function listTodos(userId: string) {
 
 async function createTodo(text: string, userId: string) {
   const database = getSql()
+  const id = crypto.randomUUID()
   const [todo] = (await database`
-    insert into todo (text, user_id)
-    values (${text}, ${userId})
-    returning id, text, completed
+    insert into todos (id, title, user_id)
+    values (${id}, ${text}, ${userId})
+    returning id, title as text, is_completed as completed
   `) as TodoRow[]
 
   return todo
@@ -119,10 +120,10 @@ async function createTodo(text: string, userId: string) {
 async function updateTodo(id: string, completed: boolean, userId: string) {
   const database = getSql()
   const [todo] = (await database`
-    update todo
-    set completed = ${completed}, updated_at = now()
+    update todos
+    set is_completed = ${completed}, updated_at = now()
     where id = ${id} and user_id = ${userId}
-    returning id, text, completed
+    returning id, title as text, is_completed as completed
   `) as TodoRow[]
 
   return todo ?? null
@@ -131,10 +132,10 @@ async function updateTodo(id: string, completed: boolean, userId: string) {
 async function updateTodoText(id: string, text: string, userId: string) {
   const database = getSql()
   const [todo] = (await database`
-    update todo
-    set text = ${text}, updated_at = now()
+    update todos
+    set title = ${text}, updated_at = now()
     where id = ${id} and user_id = ${userId}
-    returning id, text, completed
+    returning id, title as text, is_completed as completed
   `) as TodoRow[]
 
   return todo ?? null
@@ -143,10 +144,10 @@ async function updateTodoText(id: string, text: string, userId: string) {
 async function updateAllTodos(completed: boolean, userId: string) {
   const database = getSql()
   const rows = (await database`
-    update todo
-    set completed = ${completed}, updated_at = now()
+    update todos
+    set is_completed = ${completed}, updated_at = now()
     where user_id = ${userId}
-    returning id, text, completed
+    returning id, title as text, is_completed as completed
   `) as TodoRow[]
 
   return rows
@@ -154,12 +155,12 @@ async function updateAllTodos(completed: boolean, userId: string) {
 
 async function deleteTodo(id: string, userId: string) {
   const database = getSql()
-  await database`delete from todo where id = ${id} and user_id = ${userId}`
+  await database`delete from todos where id = ${id} and user_id = ${userId}`
 }
 
 async function deleteCompletedTodos(userId: string) {
   const database = getSql()
-  await database`delete from todo where completed = true and user_id = ${userId}`
+  await database`delete from todos where is_completed = true and user_id = ${userId}`
 }
 
 function getSql() {

@@ -44,11 +44,11 @@ CREATE TABLE IF NOT EXISTS "verification" (
   "updatedAt" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "todo" (
+CREATE TABLE IF NOT EXISTS "todos" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "user_id" text NOT NULL REFERENCES "user"("id") ON DELETE cascade,
-  "text" text NOT NULL,
-  "completed" boolean DEFAULT false NOT NULL,
+  "title" varchar(255) NOT NULL,
+  "is_completed" boolean DEFAULT false NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL,
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
@@ -56,4 +56,5 @@ CREATE TABLE IF NOT EXISTS "todo" (
 CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account" ("userId");
 CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier");
-CREATE INDEX IF NOT EXISTS "todo_user_id_idx" ON "todo" ("user_id");
+CREATE INDEX IF NOT EXISTS "todos_user_id_idx" ON "todos" ("user_id");
+CREATE INDEX IF NOT EXISTS "todos_is_completed_idx" ON "todos" ("is_completed");
