@@ -2,46 +2,46 @@ CREATE TABLE IF NOT EXISTS "user" (
   "id" text PRIMARY KEY NOT NULL,
   "name" text NOT NULL,
   "email" text NOT NULL UNIQUE,
-  "email_verified" boolean DEFAULT false NOT NULL,
+  "emailVerified" boolean DEFAULT false NOT NULL,
   "image" text,
-  "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp DEFAULT now() NOT NULL
+  "createdAt" timestamp DEFAULT now() NOT NULL,
+  "updatedAt" timestamp DEFAULT now() NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "session" (
   "id" text PRIMARY KEY NOT NULL,
-  "expires_at" timestamp NOT NULL,
+  "expiresAt" timestamp NOT NULL,
   "token" text NOT NULL UNIQUE,
-  "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp NOT NULL,
-  "ip_address" text,
-  "user_agent" text,
-  "user_id" text NOT NULL REFERENCES "user"("id") ON DELETE cascade
+  "createdAt" timestamp DEFAULT now() NOT NULL,
+  "updatedAt" timestamp NOT NULL,
+  "ipAddress" text,
+  "userAgent" text,
+  "userId" text NOT NULL REFERENCES "user"("id") ON DELETE cascade
 );
 
 CREATE TABLE IF NOT EXISTS "account" (
   "id" text PRIMARY KEY NOT NULL,
-  "account_id" text NOT NULL,
-  "provider_id" text NOT NULL,
-  "user_id" text NOT NULL REFERENCES "user"("id") ON DELETE cascade,
-  "access_token" text,
-  "refresh_token" text,
-  "id_token" text,
-  "access_token_expires_at" timestamp,
-  "refresh_token_expires_at" timestamp,
+  "accountId" text NOT NULL,
+  "providerId" text NOT NULL,
+  "userId" text NOT NULL REFERENCES "user"("id") ON DELETE cascade,
+  "accessToken" text,
+  "refreshToken" text,
+  "idToken" text,
+  "accessTokenExpiresAt" timestamp,
+  "refreshTokenExpiresAt" timestamp,
   "scope" text,
   "password" text,
-  "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp NOT NULL
+  "createdAt" timestamp DEFAULT now() NOT NULL,
+  "updatedAt" timestamp NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "verification" (
   "id" text PRIMARY KEY NOT NULL,
   "identifier" text NOT NULL,
   "value" text NOT NULL,
-  "expires_at" timestamp NOT NULL,
-  "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp DEFAULT now() NOT NULL
+  "expiresAt" timestamp NOT NULL,
+  "createdAt" timestamp DEFAULT now() NOT NULL,
+  "updatedAt" timestamp DEFAULT now() NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "todo" (
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS "todo" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS "account_user_id_idx" ON "account" ("user_id");
-CREATE INDEX IF NOT EXISTS "session_user_id_idx" ON "session" ("user_id");
+CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account" ("userId");
+CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier");
 CREATE INDEX IF NOT EXISTS "todo_user_id_idx" ON "todo" ("user_id");
