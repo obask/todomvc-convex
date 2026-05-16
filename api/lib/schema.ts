@@ -92,7 +92,7 @@ export const accountRelations = relations(account, ({ one }) => ({
   }),
 }))
 
-export const todo = pgTable('todo', {
+export const todo = pgTable('todos', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
   text: text('text').notNull(),
   completed: boolean('completed').default(false).notNull(),
