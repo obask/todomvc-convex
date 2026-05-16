@@ -92,11 +92,22 @@ export const accountRelations = relations(account, ({ one }) => ({
   }),
 }))
 
-export const todo = pgTable('todos', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  text: text('text').notNull(),
-  completed: boolean('completed').default(false).notNull(),
-  userId: text('user_id').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+export const todo = pgTable(
+  'todos',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    completed: boolean('is_completed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index('todos_user_id_idx').on(table.userId)],
+)

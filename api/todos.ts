@@ -7,13 +7,13 @@ import { todo } from './lib/schema.js'
 
 type TodoRow = {
   id: string
-  text: string
+  title: string
   completed: boolean
 }
 
 const todoSelection = {
   id: todo.id,
-  text: todo.text,
+  title: todo.title,
   completed: todo.completed,
 } satisfies Record<keyof TodoRow, unknown>
 
@@ -34,12 +34,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (req.method === 'POST') {
-      const text = readText(await readJson(req))
-      if (!text) {
-        res.status(400).json({ error: 'Todo text is required' })
+      const title = readTitle(await readJson(req))
+      if (!title) {
+        res.status(400).json({ error: 'Todo title is required' })
         return
       }
-      const todo = await createTodo(text, userId)
+      const todo = await createTodo(title, userId)
       res.status(201).json({ todo })
       return
     }
@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const id = url.searchParams.get('id') ?? ''
       const body = await readJson(req)
       const completed = readCompleted(body)
-      const text = readText(body)
+      const title = readTitle(body)
 
       if (completed !== null && isBulkCompletedUpdate(body)) {
         const todos = await updateAllTodos(completed, userId)
@@ -57,12 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
 
       if (completed === null) {
-        if (!id || !text) {
-          res.status(400).json({ error: 'Todo id and completed state or text are required' })
+        if (!id || !title) {
+          res.status(400).json({ error: 'Todo id and completed state or title are required' })
           return
         }
 
-        const todo = await updateTodoText(id, text, userId)
+        const todo = await updateTodoTitle(id, title, userId)
         if (!todo) {
           res.status(404).json({ error: 'Todo not found' })
           return
@@ -126,10 +126,10 @@ async function listTodos(userId: string) {
     .orderBy(asc(todo.createdAt), asc(todo.id))
 }
 
-async function createTodo(text: string, userId: string) {
+async function createTodo(title: string, userId: string) {
   const [created] = await db
     .insert(todo)
-    .values({ text, userId })
+    .values({ title, userId })
     .returning(todoSelection)
   return created
 }
@@ -143,10 +143,10 @@ async function updateTodo(id: string, completed: boolean, userId: string) {
   return updated ?? null
 }
 
-async function updateTodoText(id: string, text: string, userId: string) {
+async function updateTodoTitle(id: string, title: string, userId: string) {
   const [updated] = await db
     .update(todo)
-    .set({ text, updatedAt: sql`now()` })
+    .set({ title, updatedAt: sql`now()` })
     .where(and(eq(todo.id, id), eq(todo.userId, userId)))
     .returning(todoSelection)
   return updated ?? null
@@ -183,10 +183,10 @@ async function readJson(req: VercelRequest): Promise<unknown> {
   }
 }
 
-function readText(body: unknown): string {
+function readTitle(body: unknown): string {
   if (!body || typeof body !== 'object') return ''
-  const text = (body as Record<string, unknown>).text
-  return typeof text === 'string' ? text.trim() : ''
+  const title = (body as Record<string, unknown>).title
+  return typeof title === 'string' ? title.trim() : ''
 }
 
 function readCompleted(body: unknown): boolean | null {

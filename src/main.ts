@@ -10,13 +10,13 @@ type Session = {
 
 type Todo = {
   id: string
-  text: string
+  title: string
   completed: boolean
 }
 
 type AuthMode = 'sign-in' | 'sign-up'
 type TodoFilter = 'all' | 'active' | 'completed'
-type TodoDraft = Partial<Pick<Todo, 'text' | 'completed'>>
+type TodoDraft = Partial<Pick<Todo, 'title' | 'completed'>>
 
 let session: Session | null = null
 let todos: Todo[] = []
@@ -145,15 +145,15 @@ signOutButton.addEventListener('click', async () => {
 form.addEventListener('submit', async (event) => {
   event.preventDefault()
 
-  const text = input.value.trim()
-  if (!text || isSaving) return
+  const title = input.value.trim()
+  if (!title || isSaving) return
 
   await saveChange(async () => {
     todos = [
       ...todos,
       await requestTodo('/api/todos', {
         method: 'POST',
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ title }),
       }),
     ]
     input.value = ''
@@ -381,7 +381,7 @@ function getVisibleTodos() {
 }
 
 function createTodoMarkup(todo: Todo) {
-  const text = escapeHtml(todo.text)
+  const title = escapeHtml(todo.title)
   return `
     <li class="todo-item ${todo.completed ? 'is-completed' : ''}">
       <label>
@@ -393,14 +393,14 @@ function createTodoMarkup(todo: Todo) {
         />
         ${
           editingId === todo.id
-            ? `<input class="edit-input" data-edit-input="${todo.id}" value="${text}" />`
-            : `<span data-edit-id="${todo.id}">${text}</span>`
+            ? `<input class="edit-input" data-edit-input="${todo.id}" value="${title}" />`
+            : `<span data-edit-id="${todo.id}">${title}</span>`
         }
       </label>
       <button
         type="button"
         data-id="${todo.id}"
-        aria-label="Delete ${escapeHtml(todo.text)}"
+        aria-label="Delete ${escapeHtml(todo.title)}"
         ${isSaving ? 'disabled' : ''}
       >
         Delete
@@ -413,13 +413,13 @@ async function commitEdit(id: string, value: string) {
   if (editingId !== id || isSaving) return
 
   editingId = null
-  const text = value.trim()
-  if (!text) {
+  const title = value.trim()
+  if (!title) {
     await deleteTodo(id)
     return
   }
 
-  await saveTodoOptimistically(id, { text })
+  await saveTodoOptimistically(id, { title })
 }
 
 async function deleteTodo(id: string) {
