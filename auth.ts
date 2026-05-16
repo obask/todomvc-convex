@@ -1,4 +1,3 @@
-import { jwtVerify, SignJWT, type JWTPayload } from 'jose'
 import { SQL } from 'bun'
 
 const env = Bun.env
@@ -29,6 +28,11 @@ type AuthPayload = {
   uid: string
   name: string
   email: string
+}
+
+type AuthTokenClaims = AuthPayload & {
+  iat: number
+  exp: number
 }
 
 type UserAccountRow = {
@@ -222,19 +226,35 @@ async function readAuthPayload(headers: Headers): Promise<AuthPayload | null> {
 }
 
 async function createAuthCookieValue(payload: AuthPayload): Promise<string> {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(`${sessionMaxAgeSeconds}s`)
-    .sign(getAuthSecretKey())
+  const now = Math.floor(Date.now() / 1000)
+  const header = base64UrlEncodeJson({ alg: 'HS256', typ: 'JWT' })
+  const body = base64UrlEncodeJson({
+    ...payload,
+    iat: now,
+    exp: now + sessionMaxAgeSeconds,
+  } satisfies AuthTokenClaims)
+  const data = `${header}.${body}`
+  const signature = base64UrlEncodeBytes(await signAuthTokenData(data))
+  return `${data}.${signature}`
 }
 
 async function verifyAuthCookieValue(cookieValue: string): Promise<AuthPayload | null> {
   try {
-    const { payload } = await jwtVerify(cookieValue, getAuthSecretKey(), {
-      algorithms: ['HS256'],
-    })
-    if (!hasAuthClaims(payload)) return null
+    const [header, body, signature] = cookieValue.split('.')
+    if (!header || !body || !signature) return null
+
+    const data = `${header}.${body}`
+    const isValid = await verifyAuthTokenSignature(data, base64UrlDecodeBytes(signature))
+    if (!isValid) return null
+
+    const headerClaims = parseBase64UrlJson(header)
+    if (!hasAuthHeaderClaims(headerClaims)) return null
+
+    const payload = parseBase64UrlJson(body)
+    if (!hasAuthClaims(payload) || payload.exp <= Math.floor(Date.now() / 1000)) {
+      return null
+    }
+
     return {
       uid: payload.uid,
       name: payload.name,
@@ -245,16 +265,54 @@ async function verifyAuthCookieValue(cookieValue: string): Promise<AuthPayload |
   }
 }
 
-function hasAuthClaims(payload: JWTPayload): payload is JWTPayload & AuthPayload {
+function hasAuthHeaderClaims(payload: unknown): payload is { alg: 'HS256'; typ?: string } {
   return (
-    typeof payload.uid === 'string' &&
-    typeof payload.name === 'string' &&
-    typeof payload.email === 'string'
+    Boolean(payload) &&
+    typeof payload === 'object' &&
+    (payload as Record<string, unknown>).alg === 'HS256' &&
+    (
+      (payload as Record<string, unknown>).typ === undefined ||
+      (payload as Record<string, unknown>).typ === 'JWT'
+    )
   )
 }
 
-function getAuthSecretKey(): Uint8Array {
-  return new TextEncoder().encode(getAuthSecret())
+function hasAuthClaims(payload: unknown): payload is AuthTokenClaims {
+  return (
+    Boolean(payload) &&
+    typeof payload === 'object' &&
+    typeof (payload as Record<string, unknown>).uid === 'string' &&
+    typeof (payload as Record<string, unknown>).name === 'string' &&
+    typeof (payload as Record<string, unknown>).email === 'string' &&
+    typeof (payload as Record<string, unknown>).iat === 'number' &&
+    typeof (payload as Record<string, unknown>).exp === 'number'
+  )
+}
+
+async function signAuthTokenData(data: string): Promise<ArrayBuffer> {
+  return crypto.subtle.sign('HMAC', await getAuthSecretKey(), encodeUtf8(data))
+}
+
+async function verifyAuthTokenSignature(
+  data: string,
+  signature: Uint8Array,
+): Promise<boolean> {
+  return crypto.subtle.verify(
+    'HMAC',
+    await getAuthSecretKey(),
+    toArrayBuffer(signature),
+    encodeUtf8(data),
+  )
+}
+
+async function getAuthSecretKey(): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    'raw',
+    encodeUtf8(getAuthSecret()),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  )
 }
 
 function getAuthSecret(): string {
@@ -302,6 +360,49 @@ function parseCookies(cookieHeader: string): Map<string, string> {
     cookies.set(rawName, decodeURIComponent(rawValue.join('=')))
   }
   return cookies
+}
+
+function base64UrlEncodeJson(value: unknown): string {
+  return base64UrlEncodeBytes(encodeUtf8(JSON.stringify(value)))
+}
+
+function parseBase64UrlJson(value: string): unknown {
+  return JSON.parse(decodeUtf8(base64UrlDecodeBytes(value)))
+}
+
+function base64UrlEncodeBytes(value: Uint8Array | ArrayBuffer): string {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+}
+
+function base64UrlDecodeBytes(value: string): Uint8Array {
+  const base64 = value.replaceAll('-', '+').replaceAll('_', '/')
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function encodeUtf8(value: string): ArrayBuffer {
+  const bytes = new TextEncoder().encode(value)
+  return toArrayBuffer(bytes)
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+function decodeUtf8(value: Uint8Array): string {
+  return new TextDecoder().decode(value)
 }
 
 async function readJson(request: Request): Promise<unknown> {
