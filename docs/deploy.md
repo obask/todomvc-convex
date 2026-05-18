@@ -28,6 +28,26 @@ Add `CONVEX_DEPLOY_KEY` twice, scoped to different environments:
 
 You do **not** need to set `VITE_CONVEX_URL` — `convex deploy --cmd` injects it into the build automatically.
 
+## Setting Convex Auth variables
+
+Convex Auth also needs backend environment variables on every Convex deployment. In particular, `JWT_PRIVATE_KEY` must exist in the Convex deployment used by the app. If it is missing, sign-in or sign-up will fail with a server error that mentions `Missing environment variable JWT_PRIVATE_KEY`.
+
+For local development, the repo's `predev` script runs `node setup.mjs --once`, which invokes the Convex Auth setup helper. For deployed environments, run the same helper against the target Convex deployment after it exists:
+
+```bash
+pnpm exec auth --skip-git-check
+```
+
+If you use separate production and preview Convex deploy keys, make sure Convex Auth is configured for each deployment you expect users to sign in to.
+
+For preview deployments created by Vercel, configure Convex project default environment variables for preview deployments before Vercel creates them. Convex copies project defaults into new deployments at creation time. See [Convex Auth preview keys](../README.md#convex-auth-preview-keys) for a copy-paste script that generates and applies the matching key pair.
+
+Existing preview deployments are not updated when defaults change; recreate them or set variables directly on the named preview deployment:
+
+```bash
+pnpm exec auth --preview-name '<branch-name>' --skip-git-check
+```
+
 Equivalent CLI:
 
 ```bash

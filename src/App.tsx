@@ -20,6 +20,32 @@ import {
 import type { Doc, Id } from "../convex/_generated/dataModel";
 
 type Filter = "all" | "active" | "completed";
+type AuthFlow = "signIn" | "signUp";
+
+function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (
+    message.includes("JWT_PRIVATE_KEY") ||
+    message.includes("Missing environment variable")
+  ) {
+    return "Authentication is not configured for this deployment. Set up Convex Auth environment variables and try again.";
+  }
+
+  if (
+    message.includes("InvalidAccountId") ||
+    message.includes("InvalidSecret") ||
+    message.includes("Server Error")
+  ) {
+    return flow === "signIn"
+      ? "Invalid email or password."
+      : "Could not create that account. Try another email or password.";
+  }
+
+  return flow === "signIn"
+    ? "Sign in failed. Check your email and password and try again."
+    : "Sign up failed. Check your email and password and try again.";
+}
 
 function parseHash(): Filter {
   const h = window.location.hash;
@@ -78,8 +104,9 @@ function SignOutButton() {
 
 function SignInForm() {
   const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
+  const [flow, setFlow] = useState<AuthFlow>("signIn");
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm">
       <p className="text-center text-slate-500 dark:text-slate-400">
@@ -91,9 +118,15 @@ function SignInForm() {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
           formData.set("flow", flow);
-          void signIn("password", formData).catch((err: Error) => {
-            setError(err.message);
-          });
+          setError(null);
+          setIsSubmitting(true);
+          void signIn("password", formData)
+            .catch((err: unknown) => {
+              setError(getAuthErrorMessage(err, flow));
+            })
+            .finally(() => {
+              setIsSubmitting(false);
+            });
         }}
       >
         <input
@@ -102,6 +135,7 @@ function SignInForm() {
           name="email"
           placeholder="Email"
           autoComplete="email"
+          onChange={() => setError(null)}
           required
         />
         <input
@@ -110,13 +144,21 @@ function SignInForm() {
           name="password"
           placeholder="Password"
           autoComplete={flow === "signIn" ? "current-password" : "new-password"}
+          onChange={() => setError(null)}
           required
         />
         <button
-          className="bg-dark dark:bg-light text-light dark:text-dark rounded-md py-2 font-medium"
+          className="bg-dark dark:bg-light text-light dark:text-dark rounded-md py-2 font-medium disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"
+          disabled={isSubmitting}
         >
-          {flow === "signIn" ? "Sign in" : "Sign up"}
+          {isSubmitting
+            ? flow === "signIn"
+              ? "Signing in..."
+              : "Signing up..."
+            : flow === "signIn"
+              ? "Sign in"
+              : "Sign up"}
         </button>
         <div className="flex flex-row gap-2 text-sm">
           <span>
@@ -127,14 +169,17 @@ function SignInForm() {
           <button
             type="button"
             className="underline hover:no-underline"
-            onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
+            onClick={() => {
+              setError(null);
+              setFlow(flow === "signIn" ? "signUp" : "signIn");
+            }}
           >
             {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
           </button>
         </div>
         {error && (
           <div className="bg-red-500/20 border-2 border-red-500/50 rounded-md p-2">
-            <p className="font-mono text-xs">Error: {error}</p>
+            <p className="text-sm">{error}</p>
           </div>
         )}
       </form>
