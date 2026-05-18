@@ -24,13 +24,13 @@ From `node_modules/convex/dist/esm-types/react/`. ✓ = ported to Solid, ✗ = i
 | `useQuery(q, args \| "skip")` | `createConvexQuery(q, () => args \| "skip")` ✓ | Primes via `Unsubscribe.getCurrentValue()`. Suspends via `NotReadyError` (catch with `<Loading>`); errors propagate on read (catch with `<Errored>`). With `"skip"` returns `undefined` without suspending. |
 | `useMutation(m)` → `ReactMutation` | `createConvexMutation(m)` → `ConvexMutation` ✓ | `.withOptimisticUpdate(fn)` returns a new bound callable; `pending: Accessor<boolean>`. |
 | `useAction(a)` | `createConvexAction(a)` ✓ | `pending` accessor; no optimistic updates. |
-| `useConvexAuth()` | `createConvexAuth()` ✓ | Requires `ConvexAuthProvider({ client, useAuth })`. |
-| `Authenticated` / `Unauthenticated` / `AuthLoading` | same names ✓ | `<Show>`-based. |
+| `useConvexAuth()` from `convex/react` | `useConvexAuth()` from `src/auth/solid.tsx` ✓ | Provided by the port of `@convex-dev/auth/react/client` (not by the protocol adapter). |
+| `Authenticated` / `Unauthenticated` / `AuthLoading` | same names ✓ in `src/auth/solid.tsx` | `<Show>`-based. |
 | `useConvexConnectionState()` | `createConvexConnectionState()` ✓ | Seeded synchronously from `client.connectionState()`. |
 | `useQueries(record)` | — ✗ | Skip-token + multiple `createConvexQuery` calls covers most cases. |
 | `usePaginatedQuery(q, args, {initialNumItems})` | — ✗ | Out of core scope; `client.onPaginatedUpdate_experimental` is available if needed. |
 | `usePreloadedQuery(preloaded)` | — ✗ | Out of core scope (SSR/server-component story). |
-| `ConvexProviderWithAuth` | `ConvexAuthProvider` ✓ | Solid version takes `useAuth: () => { isLoading, isAuthenticated, fetchAccessToken }` where the two flags are Solid `Accessor`s. |
+| `ConvexAuthProvider` / `useAuthActions` / `useAuthToken` (`@convex-dev/auth/react`) | same names ✓ in `src/auth/solid.tsx` | Solid 2.0 port of the React client. Trimmed: no SSR `serverState`, no OAuth `?code=` handling, no cross-tab storage sync, no manual-mutex fallback. ~120 lines vs ~376. |
 
 ## Underlying client capabilities used
 

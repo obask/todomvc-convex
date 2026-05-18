@@ -2,7 +2,7 @@ import { render } from "@solidjs/web";
 import { ConvexClient } from "convex/browser";
 import "./index.css";
 import App from "./App";
-import { ConvexProvider } from "./convex/solid";
+import { ConvexAuthProvider } from "./auth/solid";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
 
@@ -14,9 +14,9 @@ const convex = new ConvexClient(convexUrl);
 
 render(
   () => (
-    <ConvexProvider client={convex}>
+    <ConvexAuthProvider client={convex}>
       <App />
-    </ConvexProvider>
+    </ConvexAuthProvider>
   ),
   document.getElementById("root")!,
 );

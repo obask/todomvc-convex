@@ -12,19 +12,37 @@ import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
 import type { OptimisticLocalStore } from "./convex/solid";
 import { createConvexMutation, createConvexQuery } from "./convex/solid";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useAuthActions,
+} from "./auth/solid";
 
 type Filter = "all" | "active" | "completed";
-type GuestTodo = Doc<"guestTodos">;
+type Todo = Doc<"todos">;
+type AuthFlow = "signIn" | "signUp";
 
-const sessionKey = "todomvc-solid-convex-session";
-
-function getSessionId() {
-  const existing = localStorage.getItem(sessionKey);
-  if (existing) return existing;
-
-  const next = crypto.randomUUID();
-  localStorage.setItem(sessionKey, next);
-  return next;
+function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message.includes("JWT_PRIVATE_KEY") ||
+    message.includes("Missing environment variable")
+  ) {
+    return "Authentication is not configured for this deployment. Set up Convex Auth environment variables and try again.";
+  }
+  if (
+    message.includes("InvalidAccountId") ||
+    message.includes("InvalidSecret") ||
+    message.includes("Server Error")
+  ) {
+    return flow === "signIn"
+      ? "Invalid email or password."
+      : "Could not create that account. Try another email or password.";
+  }
+  return flow === "signIn"
+    ? "Sign in failed. Check your email and password and try again."
+    : "Sign up failed. Check your email and password and try again.";
 }
 
 function parseHash(): Filter {
@@ -47,71 +65,213 @@ export default function App() {
     <div class="min-h-screen bg-slate-100 text-dark dark:bg-slate-950 dark:text-light">
       <header class="sticky top-0 z-10 flex items-center justify-between border-b-2 border-slate-200 bg-light/80 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-dark/80">
         <span class="font-semibold tracking-wide">todos</span>
-        <span class="text-sm text-slate-500">Solid + Convex guest mode</span>
+        <Authenticated>
+          <SignOutButton />
+        </Authenticated>
       </header>
       <main class="flex flex-col items-center p-6 sm:p-10">
         <h1 class="mb-6 select-none text-6xl font-thin text-rose-400/80">
           todos
         </h1>
-        <TodoApp />
+        <AuthLoading>
+          <p class="text-sm text-slate-500">Loading...</p>
+        </AuthLoading>
+        <Unauthenticated>
+          <SignInForm />
+        </Unauthenticated>
+        <Authenticated>
+          <TodoApp />
+        </Authenticated>
       </main>
     </div>
   );
 }
 
+function SignOutButton() {
+  const { signOut } = useAuthActions();
+  const viewer = createConvexQuery(api.todos.viewer, () => ({}));
+  return (
+    <div class="flex items-center gap-3 text-sm">
+      <span class="text-slate-500">{viewer() ?? "anonymous"}</span>
+      <button
+        class="rounded-md bg-slate-200 px-3 py-1 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700"
+        onClick={() => void signOut()}
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+function SignInForm() {
+  const { signIn } = useAuthActions();
+  const [flow, setFlow] = createSignal<AuthFlow>("signUp");
+  const [error, setError] = createSignal<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = createSignal(false);
+
+  const submitPassword = (e: SubmitEvent) => {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const formData = new FormData(form);
+    formData.set("flow", flow());
+    setError(null);
+    setIsSubmitting(true);
+    void signIn("password", formData)
+      .catch((err: unknown) => setError(getAuthErrorMessage(err, flow())))
+      .finally(() => setIsSubmitting(false));
+  };
+
+  const continueAnonymous = () => {
+    setError(null);
+    setIsSubmitting(true);
+    void signIn("anonymous", {})
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : String(err)),
+      )
+      .finally(() => setIsSubmitting(false));
+  };
+
+  return (
+    <div class="flex w-full max-w-sm flex-col gap-6">
+      <p class="text-center text-slate-500 dark:text-slate-400">
+        {flow() === "signUp"
+          ? "Create an account to sync your todos."
+          : "Sign in to sync your todos."}
+      </p>
+      <form class="flex flex-col gap-2" onSubmit={submitPassword}>
+        <input
+          class="rounded-md border-2 border-slate-200 bg-light p-2 text-dark dark:border-slate-800 dark:bg-dark dark:text-light"
+          type="email"
+          name="email"
+          placeholder="Email"
+          autocomplete="email"
+          onInput={() => setError(null)}
+          required
+        />
+        <input
+          class="rounded-md border-2 border-slate-200 bg-light p-2 text-dark dark:border-slate-800 dark:bg-dark dark:text-light"
+          type="password"
+          name="password"
+          placeholder="Password"
+          autocomplete={
+            flow() === "signIn" ? "current-password" : "new-password"
+          }
+          onInput={() => setError(null)}
+          required
+        />
+        <button
+          class="rounded-md bg-dark py-2 font-medium text-light disabled:cursor-not-allowed disabled:opacity-60 dark:bg-light dark:text-dark"
+          type="submit"
+          disabled={isSubmitting()}
+        >
+          {isSubmitting()
+            ? flow() === "signIn"
+              ? "Signing in..."
+              : "Signing up..."
+            : flow() === "signIn"
+              ? "Sign in"
+              : "Sign up"}
+        </button>
+        <div class="flex flex-row gap-2 text-sm">
+          <span>
+            {flow() === "signIn"
+              ? "Don't have an account?"
+              : "Already have an account?"}
+          </span>
+          <button
+            type="button"
+            class="underline hover:no-underline"
+            onClick={() => {
+              setError(null);
+              setFlow(flow() === "signIn" ? "signUp" : "signIn");
+            }}
+          >
+            {flow() === "signIn" ? "Sign up instead" : "Sign in instead"}
+          </button>
+        </div>
+        <Show when={error()}>
+          {(message) => (
+            <div class="rounded-md border-2 border-red-500/50 bg-red-500/20 p-2">
+              <p class="text-sm">{message()}</p>
+            </div>
+          )}
+        </Show>
+      </form>
+      <div class="flex items-center gap-2 text-xs text-slate-400">
+        <hr class="flex-1 border-slate-200 dark:border-slate-800" />
+        <span>or</span>
+        <hr class="flex-1 border-slate-200 dark:border-slate-800" />
+      </div>
+      <button
+        type="button"
+        class="rounded-md border border-slate-300 py-2 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-900"
+        onClick={continueAnonymous}
+        disabled={isSubmitting()}
+      >
+        Continue without an account
+      </button>
+    </div>
+  );
+}
+
 function TodoApp() {
-  const sessionId = getSessionId();
-  const todos = createConvexQuery(api.guestTodos.list, () => ({ sessionId }));
+  const todos = createConvexQuery(api.todos.list, () => ({}));
   const filter = createHashFilter();
 
   const patchList = (
     store: OptimisticLocalStore,
-    fn: (todos: GuestTodo[]) => GuestTodo[],
+    fn: (todos: Todo[]) => Todo[],
   ) => {
-    const existing = store.getQuery(api.guestTodos.list, { sessionId });
+    const existing = store.getQuery(api.todos.list, {});
     if (!existing) return;
-    store.setQuery(api.guestTodos.list, { sessionId }, fn(existing));
+    store.setQuery(api.todos.list, {}, fn(existing));
   };
 
-  const create = createConvexMutation(
-    api.guestTodos.create,
-  ).withOptimisticUpdate((store, { text }) =>
-    patchList(store, (existing) => [
-      ...existing,
-      {
-        _id: crypto.randomUUID() as GuestTodo["_id"],
-        _creationTime: Date.now(),
-        sessionId,
-        text,
-        completed: false,
-      },
-    ]),
+  const create = createConvexMutation(api.todos.create).withOptimisticUpdate(
+    (store, { text }) =>
+      patchList(store, (existing) => {
+        const trimmed = text.trim();
+        if (trimmed === "") return existing;
+        const lastTime = existing[existing.length - 1]?._creationTime ?? 0;
+        return [
+          ...existing,
+          {
+            _id: crypto.randomUUID() as Todo["_id"],
+            _creationTime: lastTime + 1,
+            userId: existing[0]?.userId ?? ("optimistic" as Todo["userId"]),
+            text: trimmed,
+            completed: false,
+          },
+        ];
+      }),
   );
   const setCompleted = createConvexMutation(
-    api.guestTodos.setCompleted,
+    api.todos.setCompleted,
   ).withOptimisticUpdate((store, { id, completed }) =>
     patchList(store, (existing) =>
       existing.map((t) => (t._id === id ? { ...t, completed } : t)),
     ),
   );
-  const rename = createConvexMutation(
-    api.guestTodos.rename,
-  ).withOptimisticUpdate((store, { id, text }) =>
-    patchList(store, (existing) =>
-      existing.map((t) => (t._id === id ? { ...t, text } : t)),
-    ),
+  const rename = createConvexMutation(api.todos.rename).withOptimisticUpdate(
+    (store, { id, text }) =>
+      patchList(store, (existing) => {
+        const trimmed = text.trim();
+        return trimmed === ""
+          ? existing.filter((t) => t._id !== id)
+          : existing.map((t) => (t._id === id ? { ...t, text: trimmed } : t));
+      }),
   );
-  const remove = createConvexMutation(api.guestTodos.remove).withOptimisticUpdate(
+  const remove = createConvexMutation(api.todos.remove).withOptimisticUpdate(
     (store, { id }) =>
       patchList(store, (existing) => existing.filter((t) => t._id !== id)),
   );
   const toggleAll = createConvexMutation(
-    api.guestTodos.toggleAll,
+    api.todos.toggleAll,
   ).withOptimisticUpdate((store, { completed }) =>
     patchList(store, (existing) => existing.map((t) => ({ ...t, completed }))),
   );
   const clearCompleted = createConvexMutation(
-    api.guestTodos.clearCompleted,
+    api.todos.clearCompleted,
   ).withOptimisticUpdate((store) =>
     patchList(store, (existing) => existing.filter((t) => !t.completed)),
   );
@@ -135,7 +295,7 @@ function TodoApp() {
     <section class="w-full max-w-xl rounded-lg border border-slate-200 bg-light shadow-lg dark:border-slate-800 dark:bg-dark">
       <NewTodoInput
         onCreate={(text) => {
-          void create({ sessionId, text }).catch(() => {});
+          void create({ text }).catch(() => {});
         }}
       />
       <Errored
@@ -183,13 +343,10 @@ function TodoApp() {
               filter={filter()}
               allCompleted={allCompleted()}
               onToggleAll={() =>
-                void toggleAll({
-                  sessionId,
-                  completed: !allCompleted(),
-                }).catch(() => {})
+                void toggleAll({ completed: !allCompleted() }).catch(() => {})
               }
               onClearCompleted={() =>
-                void clearCompleted({ sessionId }).catch(() => {})
+                void clearCompleted({}).catch(() => {})
               }
             />
           </Show>
@@ -224,7 +381,7 @@ function NewTodoInput(props: { onCreate: (text: string) => void }) {
 }
 
 function TodoItem(props: {
-  todo: GuestTodo;
+  todo: Todo;
   onToggle: (completed: boolean) => void;
   onRename: (text: string) => void;
   onRemove: () => void;

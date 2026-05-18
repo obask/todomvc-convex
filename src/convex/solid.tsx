@@ -1,12 +1,10 @@
 // Solid 2.0 adapter for Convex. Mirrors convex/react: createConvexQuery (skip
 // token + cache priming), createConvexMutation (.withOptimisticUpdate),
-// createConvexAction, createConvexAuth + Authenticated/Unauthenticated/AuthLoading,
-// createConvexConnectionState.
+// createConvexAction, createConvexConnectionState. Auth lives in ../auth/solid.tsx.
 
 import {
   Accessor,
   NotReadyError,
-  Show,
   createContext,
   createEffect,
   createMemo,
@@ -28,7 +26,7 @@ import type {
 
 export type { OptimisticUpdate, OptimisticLocalStore } from "convex/browser";
 
-const ConvexContext = createContext<ConvexClient>();
+export const ConvexContext = createContext<ConvexClient>();
 
 export function ConvexProvider(props: {
   client: ConvexClient;
@@ -158,87 +156,3 @@ export function createConvexConnectionState(): Accessor<ConnectionState> {
   return state;
 }
 
-// ---- Auth ----
-
-export type ConvexAuthState = {
-  isLoading: Accessor<boolean>;
-  isAuthenticated: Accessor<boolean>;
-};
-
-const AuthContext = createContext<ConvexAuthState>();
-
-export type ConvexAuthHook = () => {
-  isLoading: Accessor<boolean>;
-  isAuthenticated: Accessor<boolean>;
-  fetchAccessToken: (args: {
-    forceRefreshToken: boolean;
-  }) => Promise<string | null | undefined>;
-};
-
-/**
- * Wires `client.setAuth` to a Solid-native auth hook and exposes the resulting
- * `{ isLoading, isAuthenticated }` to descendants via createConvexAuth().
- */
-export function ConvexAuthProvider(props: {
-  client: ConvexClient;
-  useAuth: ConvexAuthHook;
-  children: JSX.Element;
-}) {
-  const { isLoading, isAuthenticated, fetchAccessToken } = props.useAuth();
-  const [serverAuthed, setServerAuthed] = createSignal(false);
-
-  createEffect(
-    () => isLoading(),
-    (loading) => {
-      if (loading) return;
-      if (isAuthenticated()) {
-        props.client.setAuth(fetchAccessToken, (authed) =>
-          setServerAuthed(authed),
-        );
-      } else {
-        props.client.setAuth(async () => null);
-        setServerAuthed(false);
-      }
-    },
-  );
-
-  const state: ConvexAuthState = {
-    isLoading: () => isLoading() || (isAuthenticated() && !serverAuthed()),
-    isAuthenticated: () => serverAuthed(),
-  };
-
-  return (
-    <ConvexContext value={props.client}>
-      <AuthContext value={state}>{props.children}</AuthContext>
-    </ConvexContext>
-  );
-}
-
-export function createConvexAuth(): ConvexAuthState {
-  const auth = useContext(AuthContext);
-  if (!auth) throw new Error("Missing ConvexAuthProvider");
-  return auth;
-}
-
-export function Authenticated(props: { children: JSX.Element }) {
-  const auth = createConvexAuth();
-  return (
-    <Show when={!auth.isLoading() && auth.isAuthenticated()}>
-      {props.children}
-    </Show>
-  );
-}
-
-export function Unauthenticated(props: { children: JSX.Element }) {
-  const auth = createConvexAuth();
-  return (
-    <Show when={!auth.isLoading() && !auth.isAuthenticated()}>
-      {props.children}
-    </Show>
-  );
-}
-
-export function AuthLoading(props: { children: JSX.Element }) {
-  const auth = createConvexAuth();
-  return <Show when={auth.isLoading()}>{props.children}</Show>;
-}

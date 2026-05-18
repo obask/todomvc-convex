@@ -24,3 +24,6 @@ convex-auth-preview.env
 *.sln
 *.sw?
 .vercel
+
+# Claude Code local state
+.claude/scheduled_tasks.lock
