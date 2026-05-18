@@ -21,7 +21,9 @@ From `node_modules/convex/dist/esm-types/react/`. ✓ = ported to Solid, ✗ = i
 | React API | Solid equivalent | Notes |
 | --- | --- | --- |
 | `ConvexProvider` / `useConvex` | `ConvexProvider` / `useConvex` ✓ | |
-| `useQuery(q, args \| "skip")` | `createConvexQuery(q, () => args \| "skip")` ✓ | Primes via `Unsubscribe.getCurrentValue()`. Suspends via `NotReadyError` (catch with `<Loading>`); errors propagate on read (catch with `<Errored>`). With `"skip"` returns `undefined` without suspending. |
+| `useQuery(q, args \| "skip")` | `createConvexQuery(q, args \| () => args \| "skip", { initialValue?, ssrSource? })` ✓ | Bridges Convex's `onUpdate` into Solid via an `AsyncIterable` returned from `createMemo`; the runtime drives `<Loading>`, `<Errored>`, and `isPending(() => q())` natively. Primes via `Unsubscribe.getCurrentValue()`. `"skip"` resolves synchronously to `undefined`. Args can be a static object or an `Accessor`. |
+| `setupConvex(url, opts?)` / `createConvexClient` | same names ✓ | Convenience wrappers around `new ConvexClient(...)`. |
+| `setupConvexHttp(url, opts?)` / `createConvexHttpClient` + `prefetchQuery(http, q, args)` | same names ✓ | SSR prefetch story. Feed result into `createConvexQuery(..., { initialValue })`. |
 | `useMutation(m)` → `ReactMutation` | `createConvexMutation(m)` → `ConvexMutation` ✓ | `.withOptimisticUpdate(fn)` returns a new bound callable; `pending: Accessor<boolean>`. |
 | `useAction(a)` | `createConvexAction(a)` ✓ | `pending` accessor; no optimistic updates. |
 | `useConvexAuth()` from `convex/react` | `useConvexAuth()` from `src/auth/solid.tsx` ✓ | Provided by the port of `@convex-dev/auth/react/client` (not by the protocol adapter). |
@@ -47,6 +49,6 @@ The adapter targets `ConvexClient` from `convex/browser` (not `ConvexReactClient
 
 ## Pitfalls hit during the port
 
-- **Resist `createResource`/`from()` reflexes** — neither exists in 2.0. A live subscription is just `createSignal` + `createEffect(args, apply)`.
+- **Resist `createResource`/`from()` reflexes** — neither exists in 2.0. The idiomatic 2.0 bridge for a live subscription is a `createMemo` whose compute returns an `AsyncIterable<T>`; the runtime then drives suspense and `isPending` for free. (Earlier iterations of this adapter used `createSignal` + `createEffect` + a hand-thrown `NotReadyError`; the AsyncIterable form is shorter and native.)
 - **Don't read props at the top of a component body** — wrap in JSX, a memo, or `untrack`. The auth control-flow components read `auth.isLoading()` inside the `<Show when={...}>` expression for this reason.
 - **`setValue(next)` vs `setValue(() => next)`** — when query results can be functions (rare), always use the updater form to avoid the setter treating the value as a reducer. The adapter consistently uses `setValue(() => v)`.
