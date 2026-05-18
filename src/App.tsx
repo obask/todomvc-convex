@@ -1,50 +1,27 @@
-"use client";
-
 import {
-  Authenticated,
-  Unauthenticated,
-  useConvexAuth,
-  useMutation,
-  useQuery,
-} from "convex/react";
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from "solid-js";
 import { api } from "../convex/_generated/api";
-import { useAuthActions } from "@convex-dev/auth/react";
-import {
-  FormEvent,
-  KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { Doc, Id } from "../convex/_generated/dataModel";
+import type { Doc } from "../convex/_generated/dataModel";
+import { createConvexMutation, createConvexQuery } from "./convex/solid";
 
 type Filter = "all" | "active" | "completed";
-type AuthFlow = "signIn" | "signUp";
+type GuestTodo = Doc<"guestTodos">;
 
-function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
-  const message = error instanceof Error ? error.message : String(error);
+const sessionKey = "todomvc-solid-convex-session";
 
-  if (
-    message.includes("JWT_PRIVATE_KEY") ||
-    message.includes("Missing environment variable")
-  ) {
-    return "Authentication is not configured for this deployment. Set up Convex Auth environment variables and try again.";
-  }
+function getSessionId() {
+  const existing = localStorage.getItem(sessionKey);
+  if (existing) return existing;
 
-  if (
-    message.includes("InvalidAccountId") ||
-    message.includes("InvalidSecret") ||
-    message.includes("Server Error")
-  ) {
-    return flow === "signIn"
-      ? "Invalid email or password."
-      : "Could not create that account. Try another email or password.";
-  }
-
-  return flow === "signIn"
-    ? "Sign in failed. Check your email and password and try again."
-    : "Sign up failed. Check your email and password and try again.";
+  const next = crypto.randomUUID();
+  localStorage.setItem(sessionKey, next);
+  return next;
 }
 
 function parseHash(): Filter {
@@ -54,387 +31,225 @@ function parseHash(): Filter {
   return "all";
 }
 
-function useHashFilter(): Filter {
-  const [filter, setFilter] = useState<Filter>(() =>
-    typeof window === "undefined" ? "all" : parseHash(),
-  );
-  useEffect(() => {
-    const onHash = () => setFilter(parseHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+function createHashFilter() {
+  const [filter, setFilter] = createSignal<Filter>(parseHash());
+  const onHash = () => setFilter(parseHash());
+  window.addEventListener("hashchange", onHash);
+  onCleanup(() => window.removeEventListener("hashchange", onHash));
   return filter;
 }
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-dark dark:text-light">
-      <header className="sticky top-0 z-10 bg-light/80 dark:bg-dark/80 backdrop-blur px-4 py-3 border-b-2 border-slate-200 dark:border-slate-800 flex items-center justify-between">
-        <span className="font-semibold tracking-wide">todos</span>
-        <SignOutButton />
+    <div class="min-h-screen bg-slate-100 text-dark dark:bg-slate-950 dark:text-light">
+      <header class="sticky top-0 z-10 flex items-center justify-between border-b-2 border-slate-200 bg-light/80 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-dark/80">
+        <span class="font-semibold tracking-wide">todos</span>
+        <span class="text-sm text-slate-500">Solid + Convex guest mode</span>
       </header>
-      <main className="p-6 sm:p-10 flex flex-col items-center">
-        <h1 className="text-6xl font-thin text-rose-400/80 mb-6 select-none">
+      <main class="flex flex-col items-center p-6 sm:p-10">
+        <h1 class="mb-6 select-none text-6xl font-thin text-rose-400/80">
           todos
         </h1>
-        <Authenticated>
-          <TodoApp />
-        </Authenticated>
-        <Unauthenticated>
-          <SignInForm />
-        </Unauthenticated>
+        <TodoApp />
       </main>
     </div>
   );
 }
 
-function SignOutButton() {
-  const { isAuthenticated } = useConvexAuth();
-  const { signOut } = useAuthActions();
-  if (!isAuthenticated) return null;
-  return (
-    <button
-      className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-3 py-1 text-sm hover:bg-slate-300 dark:hover:bg-slate-700"
-      onClick={() => void signOut()}
-    >
-      Sign out
-    </button>
-  );
-}
-
-function SignInForm() {
-  const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState<AuthFlow>("signIn");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  return (
-    <div className="flex flex-col gap-6 w-full max-w-sm">
-      <p className="text-center text-slate-500 dark:text-slate-400">
-        Sign in to sync your todos.
-      </p>
-      <form
-        className="flex flex-col gap-2"
-        onSubmit={(e: FormEvent<HTMLFormElement>) => {
-          e.preventDefault();
-          const formData = new FormData(e.currentTarget);
-          formData.set("flow", flow);
-          setError(null);
-          setIsSubmitting(true);
-          void signIn("password", formData)
-            .catch((err: unknown) => {
-              setError(getAuthErrorMessage(err, flow));
-            })
-            .finally(() => {
-              setIsSubmitting(false);
-            });
-        }}
-      >
-        <input
-          className="bg-light dark:bg-dark text-dark dark:text-light rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
-          type="email"
-          name="email"
-          placeholder="Email"
-          autoComplete="email"
-          onChange={() => setError(null)}
-          required
-        />
-        <input
-          className="bg-light dark:bg-dark text-dark dark:text-light rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
-          type="password"
-          name="password"
-          placeholder="Password"
-          autoComplete={flow === "signIn" ? "current-password" : "new-password"}
-          onChange={() => setError(null)}
-          required
-        />
-        <button
-          className="bg-dark dark:bg-light text-light dark:text-dark rounded-md py-2 font-medium disabled:cursor-not-allowed disabled:opacity-60"
-          type="submit"
-          disabled={isSubmitting}
-        >
-          {isSubmitting
-            ? flow === "signIn"
-              ? "Signing in..."
-              : "Signing up..."
-            : flow === "signIn"
-              ? "Sign in"
-              : "Sign up"}
-        </button>
-        <div className="flex flex-row gap-2 text-sm">
-          <span>
-            {flow === "signIn"
-              ? "Don't have an account?"
-              : "Already have an account?"}
-          </span>
-          <button
-            type="button"
-            className="underline hover:no-underline"
-            onClick={() => {
-              setError(null);
-              setFlow(flow === "signIn" ? "signUp" : "signIn");
-            }}
-          >
-            {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
-          </button>
-        </div>
-        {error && (
-          <div className="bg-red-500/20 border-2 border-red-500/50 rounded-md p-2">
-            <p className="text-sm">{error}</p>
-          </div>
-        )}
-      </form>
-    </div>
-  );
-}
-
 function TodoApp() {
-  const todos = useQuery(api.todos.list, {});
-  const filter = useHashFilter();
+  const sessionId = getSessionId();
+  const todos = createConvexQuery(api.guestTodos.list, () => ({ sessionId }));
+  const filter = createHashFilter();
 
-  const create = useMutation(api.todos.create).withOptimisticUpdate(
-    (localStore, { text }) => {
-      const existing = localStore.getQuery(api.todos.list, {});
-      if (existing === undefined) return;
-      const trimmed = text.trim();
-      if (trimmed === "") return;
-      const lastTime = existing[existing.length - 1]?._creationTime ?? 0;
-      const optimistic: Doc<"todos"> = {
-        _id: crypto.randomUUID() as Id<"todos">,
-        _creationTime: lastTime + 1,
-        userId: existing[0]?.userId ?? ("optimistic" as Id<"users">),
-        text: trimmed,
-        completed: false,
-      };
-      localStore.setQuery(api.todos.list, {}, [...existing, optimistic]);
-    },
-  );
-  const setCompleted = useMutation(api.todos.setCompleted).withOptimisticUpdate(
-    (localStore, { id, completed }) => {
-      const existing = localStore.getQuery(api.todos.list, {});
-      if (existing === undefined) return;
-      localStore.setQuery(
-        api.todos.list,
-        {},
-        existing.map((t) => (t._id === id ? { ...t, completed } : t)),
-      );
-    },
-  );
-  const rename = useMutation(api.todos.rename).withOptimisticUpdate(
-    (localStore, { id, text }) => {
-      const existing = localStore.getQuery(api.todos.list, {});
-      if (existing === undefined) return;
-      const trimmed = text.trim();
-      const next =
-        trimmed === ""
-          ? existing.filter((t) => t._id !== id)
-          : existing.map((t) => (t._id === id ? { ...t, text: trimmed } : t));
-      localStore.setQuery(api.todos.list, {}, next);
-    },
-  );
-  const remove = useMutation(api.todos.remove).withOptimisticUpdate(
-    (localStore, { id }) => {
-      const existing = localStore.getQuery(api.todos.list, {});
-      if (existing === undefined) return;
-      localStore.setQuery(
-        api.todos.list,
-        {},
-        existing.filter((t) => t._id !== id),
-      );
-    },
-  );
-  const toggleAll = useMutation(api.todos.toggleAll).withOptimisticUpdate(
-    (localStore, { completed }) => {
-      const existing = localStore.getQuery(api.todos.list, {});
-      if (existing === undefined) return;
-      localStore.setQuery(
-        api.todos.list,
-        {},
-        existing.map((t) => ({ ...t, completed })),
-      );
-    },
-  );
-  const clearCompleted = useMutation(
-    api.todos.clearCompleted,
-  ).withOptimisticUpdate((localStore) => {
-    const existing = localStore.getQuery(api.todos.list, {});
-    if (existing === undefined) return;
-    localStore.setQuery(
-      api.todos.list,
-      {},
-      existing.filter((t) => !t.completed),
-    );
+  const create = createConvexMutation(api.guestTodos.create);
+  const setCompleted = createConvexMutation(api.guestTodos.setCompleted);
+  const rename = createConvexMutation(api.guestTodos.rename);
+  const remove = createConvexMutation(api.guestTodos.remove);
+  const toggleAll = createConvexMutation(api.guestTodos.toggleAll);
+  const clearCompleted = createConvexMutation(api.guestTodos.clearCompleted);
+
+  const visible = createMemo(() => {
+    const allTodos = todos();
+    if (!allTodos) return undefined;
+    if (filter() === "active") return allTodos.filter((t) => !t.completed);
+    if (filter() === "completed") return allTodos.filter((t) => t.completed);
+    return allTodos;
   });
 
-  const visible = useMemo(() => {
-    if (todos === undefined) return undefined;
-    if (filter === "active") return todos.filter((t) => !t.completed);
-    if (filter === "completed") return todos.filter((t) => t.completed);
-    return todos;
-  }, [todos, filter]);
-
-  const remaining = todos?.filter((t) => !t.completed).length ?? 0;
-  const completedCount = (todos?.length ?? 0) - remaining;
-  const allCompleted = (todos?.length ?? 0) > 0 && remaining === 0;
+  const remaining = createMemo(
+    () => todos()?.filter((t) => !t.completed).length ?? 0,
+  );
+  const completedCount = createMemo(
+    () => (todos()?.length ?? 0) - remaining(),
+  );
+  const allCompleted = createMemo(
+    () => (todos()?.length ?? 0) > 0 && remaining() === 0,
+  );
 
   return (
-    <section className="w-full max-w-xl bg-light dark:bg-dark border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg">
+    <section class="w-full max-w-xl rounded-lg border border-slate-200 bg-light shadow-lg dark:border-slate-800 dark:bg-dark">
       <NewTodoInput
         onCreate={(text) => {
-          void create({ text }).catch(() => {});
+          void create({ sessionId, text }).catch(() => {});
         }}
       />
-      {todos === undefined ? (
-        <p className="p-4 text-sm text-slate-500">Loading…</p>
-      ) : todos.length === 0 ? (
-        <p className="p-4 text-sm text-slate-500">
-          No todos yet — add one above.
-        </p>
-      ) : (
-        <>
+      <Show
+        when={todos() !== undefined}
+        fallback={<p class="p-4 text-sm text-slate-500">Loading...</p>}
+      >
+        <Show
+          when={(todos()?.length ?? 0) > 0}
+          fallback={
+            <p class="p-4 text-sm text-slate-500">
+              No todos yet. Add one above.
+            </p>
+          }
+        >
           <ul>
-            {visible?.map((todo) => (
-              <TodoItem
-                key={todo._id}
-                todo={todo}
-                onToggle={(completed) =>
-                  void setCompleted({ id: todo._id, completed }).catch(
-                    () => {},
-                  )
-                }
-                onRename={(text) =>
-                  void rename({ id: todo._id, text }).catch(() => {})
-                }
-                onRemove={() =>
-                  void remove({ id: todo._id }).catch(() => {})
-                }
-              />
-            ))}
+            <For each={visible()}>
+              {(todo) => (
+                <TodoItem
+                  todo={todo}
+                  onToggle={(completed) =>
+                    void setCompleted({ id: todo._id, completed }).catch(
+                      () => {},
+                    )
+                  }
+                  onRename={(text) =>
+                    void rename({ id: todo._id, text }).catch(() => {})
+                  }
+                  onRemove={() => void remove({ id: todo._id }).catch(() => {})}
+                />
+              )}
+            </For>
           </ul>
           <Footer
-            remaining={remaining}
-            completedCount={completedCount}
-            filter={filter}
-            allCompleted={allCompleted}
-            onToggleAll={() => void toggleAll({ completed: !allCompleted })}
-            onClearCompleted={() => void clearCompleted({}).catch(() => {})}
+            remaining={remaining()}
+            completedCount={completedCount()}
+            filter={filter()}
+            allCompleted={allCompleted()}
+            onToggleAll={() =>
+              void toggleAll({
+                sessionId,
+                completed: !allCompleted(),
+              }).catch(() => {})
+            }
+            onClearCompleted={() =>
+              void clearCompleted({ sessionId }).catch(() => {})
+            }
           />
-        </>
-      )}
+        </Show>
+      </Show>
     </section>
   );
 }
 
-function NewTodoInput({ onCreate }: { onCreate: (text: string) => void }) {
-  const [value, setValue] = useState("");
+function NewTodoInput(props: { onCreate: (text: string) => void }) {
+  const [value, setValue] = createSignal("");
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const trimmed = value.trim();
+        const trimmed = value().trim();
         if (trimmed === "") return;
-        onCreate(trimmed);
+        props.onCreate(trimmed);
         setValue("");
       }}
-      className="border-b border-slate-200 dark:border-slate-800"
+      class="border-b border-slate-200 dark:border-slate-800"
     >
       <input
-        autoFocus
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        autofocus
+        value={value()}
+        onInput={(e) => setValue(e.currentTarget.value)}
         placeholder="What needs to be done?"
-        className="w-full bg-transparent px-4 py-4 text-lg italic placeholder:text-slate-400 focus:outline-none"
+        class="w-full bg-transparent px-4 py-4 text-lg italic placeholder:text-slate-400 focus:outline-none"
       />
     </form>
   );
 }
 
-function TodoItem({
-  todo,
-  onToggle,
-  onRename,
-  onRemove,
-}: {
-  todo: Doc<"todos">;
+function TodoItem(props: {
+  todo: GuestTodo;
   onToggle: (completed: boolean) => void;
   onRename: (text: string) => void;
   onRemove: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(todo.text);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [editing, setEditing] = createSignal(false);
+  const [draft, setDraft] = createSignal(props.todo.text);
+  let inputRef: HTMLInputElement | undefined;
 
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+  createEffect(() => {
+    if (editing()) {
+      inputRef?.focus();
+      inputRef?.select();
     }
-  }, [editing]);
+  });
 
   const startEditing = () => {
-    setDraft(todo.text);
+    setDraft(props.todo.text);
     setEditing(true);
   };
 
   const commit = () => {
-    if (!editing) return;
+    if (!editing()) return;
     setEditing(false);
-    const trimmed = draft.trim();
-    if (trimmed === todo.text) return;
-    onRename(trimmed);
+    const trimmed = draft().trim();
+    if (trimmed === props.todo.text) return;
+    props.onRename(trimmed);
   };
+
   const cancel = () => {
     setEditing(false);
-    setDraft(todo.text);
-  };
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") commit();
-    else if (e.key === "Escape") cancel();
+    setDraft(props.todo.text);
   };
 
   return (
-    <li className="group flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-900">
+    <li class="group flex items-center gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-900">
       <input
         type="checkbox"
-        checked={todo.completed}
-        onChange={(e) => onToggle(e.target.checked)}
-        className="size-5 accent-emerald-500"
+        checked={props.todo.completed}
+        onChange={(e) => props.onToggle(e.currentTarget.checked)}
+        class="size-5 accent-emerald-500"
       />
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={onKey}
-          className="flex-1 bg-transparent border border-slate-300 dark:border-slate-700 rounded px-2 py-1 focus:outline-none"
-        />
-      ) : (
-        <label
-          onDoubleClick={startEditing}
-          className={`flex-1 cursor-pointer break-words ${todo.completed ? "line-through text-slate-400" : ""}`}
-        >
-          {todo.text}
-        </label>
-      )}
-      <button
-        onClick={onRemove}
-        aria-label="Delete todo"
-        className="text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+      <Show
+        when={editing()}
+        fallback={
+          <label
+            onDblClick={startEditing}
+            class={`flex-1 cursor-pointer break-words ${
+              props.todo.completed ? "text-slate-400 line-through" : ""
+            }`}
+          >
+            {props.todo.text}
+          </label>
+        }
       >
-        ✕
+        <input
+          ref={(el) => {
+            inputRef = el;
+          }}
+          value={draft()}
+          onInput={(e) => setDraft(e.currentTarget.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") cancel();
+          }}
+          class="flex-1 rounded border border-slate-300 bg-transparent px-2 py-1 focus:outline-none dark:border-slate-700"
+        />
+      </Show>
+      <button
+        onClick={props.onRemove}
+        aria-label="Delete todo"
+        class="text-rose-400 opacity-0 transition-opacity group-hover:opacity-100"
+      >
+        x
       </button>
     </li>
   );
 }
 
-function Footer({
-  remaining,
-  completedCount,
-  filter,
-  allCompleted,
-  onToggleAll,
-  onClearCompleted,
-}: {
+function Footer(props: {
   remaining: number;
   completedCount: number;
   filter: Filter;
@@ -443,33 +258,35 @@ function Footer({
   onClearCompleted: () => void;
 }) {
   return (
-    <footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm text-slate-500">
+    <footer class="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm text-slate-500">
       <span>
-        <strong className="text-dark dark:text-light">{remaining}</strong>{" "}
-        {remaining === 1 ? "item" : "items"} left
+        <strong class="text-dark dark:text-light">{props.remaining}</strong>{" "}
+        {props.remaining === 1 ? "item" : "items"} left
       </span>
-      <nav className="flex gap-1">
-        <FilterLink current={filter} value="all" href="#/" label="All" />
+      <nav class="flex gap-1">
+        <FilterLink current={props.filter} value="all" href="#/" label="All" />
         <FilterLink
-          current={filter}
+          current={props.filter}
           value="active"
           href="#/active"
           label="Active"
         />
         <FilterLink
-          current={filter}
+          current={props.filter}
           value="completed"
           href="#/completed"
           label="Completed"
         />
       </nav>
-      <div className="flex items-center gap-3">
-        <button onClick={onToggleAll} className="hover:underline">
-          {allCompleted ? "Mark all active" : "Mark all done"}
+      <div class="flex items-center gap-3">
+        <button onClick={props.onToggleAll} class="hover:underline">
+          {props.allCompleted ? "Mark all active" : "Mark all done"}
         </button>
         <button
-          onClick={onClearCompleted}
-          className={`hover:underline ${completedCount === 0 ? "invisible" : ""}`}
+          onClick={props.onClearCompleted}
+          class={`hover:underline ${
+            props.completedCount === 0 ? "invisible" : ""
+          }`}
         >
           Clear completed
         </button>
@@ -478,24 +295,23 @@ function Footer({
   );
 }
 
-function FilterLink({
-  current,
-  value,
-  href,
-  label,
-}: {
+function FilterLink(props: {
   current: Filter;
   value: Filter;
   href: string;
   label: string;
 }) {
-  const active = current === value;
+  const active = () => props.current === props.value;
   return (
     <a
-      href={href}
-      className={`px-2 py-1 rounded border ${active ? "border-rose-400/60" : "border-transparent hover:border-slate-300 dark:hover:border-slate-700"}`}
+      href={props.href}
+      class={`rounded border px-2 py-1 ${
+        active()
+          ? "border-rose-400/60"
+          : "border-transparent hover:border-slate-300 dark:hover:border-slate-700"
+      }`}
     >
-      {label}
+      {props.label}
     </a>
   );
 }

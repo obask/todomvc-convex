@@ -1,14 +1,17 @@
-# Welcome to your Convex + React (Vite) + Convex Auth app
+# TodoMVC with Convex + Solid
 
-This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
+This is a [Convex](https://convex.dev/) TodoMVC experiment using Solid for the frontend.
 
-After the initial setup (<2 minutes) you'll have a working full-stack app using:
+The app uses:
 
 - Convex as your backend (database, server logic)
-- [React](https://react.dev/) as your frontend (web page interactivity)
+- [Solid](https://www.solidjs.com/) as your frontend
 - [Vite](https://vitest.dev/) for optimized web hosting
 - [Tailwind](https://tailwindcss.com/) for building great looking UI
-- [Convex Auth](https://labs.convex.dev/auth) for authentication
+
+The Solid UI talks to Convex through a small adapter in `src/convex/solid.tsx`.
+The current runnable Solid path uses guest todos keyed by a browser-local session id in `convex/guestTodos.ts`.
+The original authenticated Convex Auth todos remain in `convex/todos.ts` for a later auth-specific pass.
 
 ## Get started
 
@@ -17,12 +20,6 @@ If you just cloned this codebase and didn't use `npm create convex`, run:
 ```
 pnpm install
 pnpm run dev
-```
-
-If you're reading this README on GitHub and want to use this template, run:
-
-```
-npm create convex@latest -- -t react-vite-convexauth
 ```
 
 For more information on how to configure Convex Auth, check out the [Convex Auth docs](https://labs.convex.dev/auth/).

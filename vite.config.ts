@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import solid from "vite-plugin-solid";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 3000,
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [solid(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
