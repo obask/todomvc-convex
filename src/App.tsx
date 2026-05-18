@@ -291,18 +291,6 @@ function TodoApp() {
         </p>
       ) : (
         <>
-          <div className="flex items-center border-b border-slate-200 dark:border-slate-800">
-            <button
-              aria-label="Toggle all"
-              onClick={() => void toggleAll({ completed: !allCompleted })}
-              className={`px-4 py-2 text-xl ${allCompleted ? "text-slate-700 dark:text-slate-200" : "text-slate-300 dark:text-slate-600"}`}
-            >
-              ❯
-            </button>
-            <span className="text-xs text-slate-400 select-none">
-              toggle all
-            </span>
-          </div>
           <ul>
             {visible?.map((todo) => (
               <TodoItem
@@ -326,6 +314,8 @@ function TodoApp() {
             remaining={remaining}
             completedCount={completedCount}
             filter={filter}
+            allCompleted={allCompleted}
+            onToggleAll={() => void toggleAll({ completed: !allCompleted })}
             onClearCompleted={() => void clearCompleted({}).catch(() => {})}
           />
         </>
@@ -441,15 +431,19 @@ function Footer({
   remaining,
   completedCount,
   filter,
+  allCompleted,
+  onToggleAll,
   onClearCompleted,
 }: {
   remaining: number;
   completedCount: number;
   filter: Filter;
+  allCompleted: boolean;
+  onToggleAll: () => void;
   onClearCompleted: () => void;
 }) {
   return (
-    <footer className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm text-slate-500">
+    <footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm text-slate-500">
       <span>
         <strong className="text-dark dark:text-light">{remaining}</strong>{" "}
         {remaining === 1 ? "item" : "items"} left
@@ -469,12 +463,17 @@ function Footer({
           label="Completed"
         />
       </nav>
-      <button
-        onClick={onClearCompleted}
-        className={`hover:underline ${completedCount === 0 ? "invisible" : ""}`}
-      >
-        Clear completed
-      </button>
+      <div className="flex items-center gap-3">
+        <button onClick={onToggleAll} className="hover:underline">
+          {allCompleted ? "Mark all active" : "Mark all done"}
+        </button>
+        <button
+          onClick={onClearCompleted}
+          className={`hover:underline ${completedCount === 0 ? "invisible" : ""}`}
+        >
+          Clear completed
+        </button>
+      </div>
     </footer>
   );
 }
