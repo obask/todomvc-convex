@@ -1,30 +1,37 @@
 # TodoMVC with Convex + Solid
 
-This is a [Convex](https://convex.dev/) TodoMVC experiment using Solid for the frontend.
+This is a [Convex](https://convex.dev/) TodoMVC app using Solid 2 for the frontend.
 
 The app uses:
 
-- Convex as your backend (database, server logic)
-- [Solid](https://www.solidjs.com/) as your frontend
-- [Vite](https://vitest.dev/) for optimized web hosting
-- [Tailwind](https://tailwindcss.com/) for building great looking UI
+- Convex for the database, server functions, and authentication.
+- [Solid](https://www.solidjs.com/) 2 for the frontend.
+- [Vite](https://vite.dev/) for the web build.
+- [Tailwind CSS](https://tailwindcss.com/) for styling.
 
-The Solid UI talks to Convex through a small adapter in `src/convex/solid.tsx`.
-The current runnable Solid path uses guest todos keyed by a browser-local session id in `convex/guestTodos.ts`.
-The original authenticated Convex Auth todos remain in `convex/todos.ts` for a later auth-specific pass.
+The Solid UI talks to Convex through [`convex-solidjs`](https://github.com/obask/convex-solidjs).
+Todos are scoped to the authenticated Convex Auth user in `convex/todos.ts`.
+Users can sign in with email and password or use the anonymous provider through the
+"Continue without an account" button.
 
 ## Get started
 
-If you just cloned this codebase and didn't use `npm create convex`, run:
+Install dependencies and start Convex plus Vite:
 
-```
+```bash
 pnpm install
 pnpm run dev
 ```
 
-For more information on how to configure Convex Auth, check out the [Convex Auth docs](https://labs.convex.dev/auth/).
+The `predev` script runs `convex init` and the Convex Auth setup helper once.
+Follow the prompts from the Convex CLI if this is your first local deployment.
 
-For more examples of different Convex Auth flows, check out this [example repo](https://www.convex.dev/templates/convex-auth).
+Useful follow-up docs:
+
+- [Todo feature notes](docs/features/todos.md)
+- [Solid + Convex adapter notes](docs/solid-convex-adapter.md)
+- [Vercel deployment notes](docs/deploy.md)
+- [Convex Auth docs](https://labs.convex.dev/auth/)
 
 ## Convex Auth preview keys
 
@@ -69,7 +76,6 @@ To learn more about developing your project with Convex, check out:
 - The [Tour of Convex](https://docs.convex.dev/get-started) for a thorough introduction to Convex principles.
 - The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
 - [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
-
 
 ## Join the community
 
