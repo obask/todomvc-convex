@@ -1,5 +1,7 @@
 import {
+  Errored,
   For,
+  Loading,
   Show,
   createEffect,
   createMemo,
@@ -8,6 +10,7 @@ import {
 } from "solid-js";
 import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
+import type { OptimisticLocalStore } from "./convex/solid";
 import { createConvexMutation, createConvexQuery } from "./convex/solid";
 
 type Filter = "all" | "active" | "completed";
@@ -61,29 +64,71 @@ function TodoApp() {
   const todos = createConvexQuery(api.guestTodos.list, () => ({ sessionId }));
   const filter = createHashFilter();
 
-  const create = createConvexMutation(api.guestTodos.create);
-  const setCompleted = createConvexMutation(api.guestTodos.setCompleted);
-  const rename = createConvexMutation(api.guestTodos.rename);
-  const remove = createConvexMutation(api.guestTodos.remove);
-  const toggleAll = createConvexMutation(api.guestTodos.toggleAll);
-  const clearCompleted = createConvexMutation(api.guestTodos.clearCompleted);
+  const patchList = (
+    store: OptimisticLocalStore,
+    fn: (todos: GuestTodo[]) => GuestTodo[],
+  ) => {
+    const existing = store.getQuery(api.guestTodos.list, { sessionId });
+    if (!existing) return;
+    store.setQuery(api.guestTodos.list, { sessionId }, fn(existing));
+  };
+
+  const create = createConvexMutation(
+    api.guestTodos.create,
+  ).withOptimisticUpdate((store, { text }) =>
+    patchList(store, (existing) => [
+      ...existing,
+      {
+        _id: crypto.randomUUID() as GuestTodo["_id"],
+        _creationTime: Date.now(),
+        sessionId,
+        text,
+        completed: false,
+      },
+    ]),
+  );
+  const setCompleted = createConvexMutation(
+    api.guestTodos.setCompleted,
+  ).withOptimisticUpdate((store, { id, completed }) =>
+    patchList(store, (existing) =>
+      existing.map((t) => (t._id === id ? { ...t, completed } : t)),
+    ),
+  );
+  const rename = createConvexMutation(
+    api.guestTodos.rename,
+  ).withOptimisticUpdate((store, { id, text }) =>
+    patchList(store, (existing) =>
+      existing.map((t) => (t._id === id ? { ...t, text } : t)),
+    ),
+  );
+  const remove = createConvexMutation(api.guestTodos.remove).withOptimisticUpdate(
+    (store, { id }) =>
+      patchList(store, (existing) => existing.filter((t) => t._id !== id)),
+  );
+  const toggleAll = createConvexMutation(
+    api.guestTodos.toggleAll,
+  ).withOptimisticUpdate((store, { completed }) =>
+    patchList(store, (existing) => existing.map((t) => ({ ...t, completed }))),
+  );
+  const clearCompleted = createConvexMutation(
+    api.guestTodos.clearCompleted,
+  ).withOptimisticUpdate((store) =>
+    patchList(store, (existing) => existing.filter((t) => !t.completed)),
+  );
 
   const visible = createMemo(() => {
-    const allTodos = todos();
-    if (!allTodos) return undefined;
+    const allTodos = todos()!;
     if (filter() === "active") return allTodos.filter((t) => !t.completed);
     if (filter() === "completed") return allTodos.filter((t) => t.completed);
     return allTodos;
   });
 
   const remaining = createMemo(
-    () => todos()?.filter((t) => !t.completed).length ?? 0,
+    () => todos()!.filter((t) => !t.completed).length,
   );
-  const completedCount = createMemo(
-    () => (todos()?.length ?? 0) - remaining(),
-  );
+  const completedCount = createMemo(() => todos()!.length - remaining());
   const allCompleted = createMemo(
-    () => (todos()?.length ?? 0) > 0 && remaining() === 0,
+    () => todos()!.length > 0 && remaining() === 0,
   );
 
   return (
@@ -93,53 +138,63 @@ function TodoApp() {
           void create({ sessionId, text }).catch(() => {});
         }}
       />
-      <Show
-        when={todos() !== undefined}
-        fallback={<p class="p-4 text-sm text-slate-500">Loading...</p>}
+      <Errored
+        fallback={(err, reset) => (
+          <div class="p-4 text-sm text-rose-500">
+            <p>Failed to load: {String(err())}</p>
+            <button onClick={reset} class="mt-2 underline">
+              Retry
+            </button>
+          </div>
+        )}
       >
-        <Show
-          when={(todos()?.length ?? 0) > 0}
-          fallback={
-            <p class="p-4 text-sm text-slate-500">
-              No todos yet. Add one above.
-            </p>
-          }
-        >
-          <ul>
-            <For each={visible()}>
-              {(todo) => (
-                <TodoItem
-                  todo={todo}
-                  onToggle={(completed) =>
-                    void setCompleted({ id: todo._id, completed }).catch(
-                      () => {},
-                    )
-                  }
-                  onRename={(text) =>
-                    void rename({ id: todo._id, text }).catch(() => {})
-                  }
-                  onRemove={() => void remove({ id: todo._id }).catch(() => {})}
-                />
-              )}
-            </For>
-          </ul>
-          <Footer
-            remaining={remaining()}
-            completedCount={completedCount()}
-            filter={filter()}
-            allCompleted={allCompleted()}
-            onToggleAll={() =>
-              void toggleAll({
-                sessionId,
-                completed: !allCompleted(),
-              }).catch(() => {})
+        <Loading fallback={<p class="p-4 text-sm text-slate-500">Loading...</p>}>
+          <Show
+            when={todos()!.length > 0}
+            fallback={
+              <p class="p-4 text-sm text-slate-500">
+                No todos yet. Add one above.
+              </p>
             }
-            onClearCompleted={() =>
-              void clearCompleted({ sessionId }).catch(() => {})
-            }
-          />
-        </Show>
-      </Show>
+          >
+            <ul>
+              <For each={visible()}>
+                {(todo) => (
+                  <TodoItem
+                    todo={todo}
+                    onToggle={(completed) =>
+                      void setCompleted({ id: todo._id, completed }).catch(
+                        () => {},
+                      )
+                    }
+                    onRename={(text) =>
+                      void rename({ id: todo._id, text }).catch(() => {})
+                    }
+                    onRemove={() =>
+                      void remove({ id: todo._id }).catch(() => {})
+                    }
+                  />
+                )}
+              </For>
+            </ul>
+            <Footer
+              remaining={remaining()}
+              completedCount={completedCount()}
+              filter={filter()}
+              allCompleted={allCompleted()}
+              onToggleAll={() =>
+                void toggleAll({
+                  sessionId,
+                  completed: !allCompleted(),
+                }).catch(() => {})
+              }
+              onClearCompleted={() =>
+                void clearCompleted({ sessionId }).catch(() => {})
+              }
+            />
+          </Show>
+        </Loading>
+      </Errored>
     </section>
   );
 }
@@ -219,9 +274,10 @@ function TodoItem(props: {
         fallback={
           <label
             onDblClick={startEditing}
-            class={`flex-1 cursor-pointer break-words ${
-              props.todo.completed ? "text-slate-400 line-through" : ""
-            }`}
+            class={[
+              "flex-1 cursor-pointer break-words",
+              { "text-slate-400 line-through": props.todo.completed },
+            ]}
           >
             {props.todo.text}
           </label>
@@ -287,9 +343,10 @@ function Footer(props: {
         </button>
         <button
           onClick={props.onClearCompleted}
-          class={`hover:underline ${
-            props.completedCount === 0 ? "invisible" : ""
-          }`}
+          class={[
+            "hover:underline",
+            { invisible: props.completedCount === 0 },
+          ]}
         >
           Clear completed
         </button>
@@ -308,11 +365,12 @@ function FilterLink(props: {
   return (
     <a
       href={props.href}
-      class={`rounded border px-2 py-1 ${
+      class={[
+        "rounded border px-2 py-1",
         active()
           ? "border-rose-400/60"
-          : "border-transparent hover:border-slate-300 dark:hover:border-slate-700"
-      }`}
+          : "border-transparent hover:border-slate-300 dark:hover:border-slate-700",
+      ]}
     >
       {props.label}
     </a>
