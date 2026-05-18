@@ -9,44 +9,70 @@ import {
 } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { Doc, Id } from "../convex/_generated/dataModel";
+
+type Filter = "all" | "active" | "completed";
+
+function parseHash(): Filter {
+  const h = window.location.hash;
+  if (h === "#/active") return "active";
+  if (h === "#/completed") return "completed";
+  return "all";
+}
+
+function useHashFilter(): Filter {
+  const [filter, setFilter] = useState<Filter>(() =>
+    typeof window === "undefined" ? "all" : parseHash(),
+  );
+  useEffect(() => {
+    const onHash = () => setFilter(parseHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return filter;
+}
 
 export default function App() {
   return (
-    <>
-      <header className="sticky top-0 z-10 bg-light dark:bg-dark p-4 border-b-2 border-slate-200 dark:border-slate-800">
-        Convex + React + Convex Auth
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-dark dark:text-light">
+      <header className="sticky top-0 z-10 bg-light/80 dark:bg-dark/80 backdrop-blur px-4 py-3 border-b-2 border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <span className="font-semibold tracking-wide">todos</span>
         <SignOutButton />
       </header>
-      <main className="p-8 flex flex-col gap-16">
-        <h1 className="text-4xl font-bold text-center">
-          Convex + React + Convex Auth
+      <main className="p-6 sm:p-10 flex flex-col items-center">
+        <h1 className="text-6xl font-thin text-rose-400/80 mb-6 select-none">
+          todos
         </h1>
         <Authenticated>
-          <Content />
+          <TodoApp />
         </Authenticated>
         <Unauthenticated>
           <SignInForm />
         </Unauthenticated>
       </main>
-    </>
+    </div>
   );
 }
 
 function SignOutButton() {
   const { isAuthenticated } = useConvexAuth();
   const { signOut } = useAuthActions();
+  if (!isAuthenticated) return null;
   return (
-    <>
-      {isAuthenticated && (
-        <button
-          className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-2 py-1"
-          onClick={() => void signOut()}
-        >
-          Sign out
-        </button>
-      )}
-    </>
+    <button
+      className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-3 py-1 text-sm hover:bg-slate-300 dark:hover:bg-slate-700"
+      onClick={() => void signOut()}
+    >
+      Sign out
+    </button>
   );
 }
 
@@ -55,16 +81,18 @@ function SignInForm() {
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="flex flex-col gap-8 w-96 mx-auto">
-      <p>Log in to see the numbers</p>
+    <div className="flex flex-col gap-6 w-full max-w-sm">
+      <p className="text-center text-slate-500 dark:text-slate-400">
+        Sign in to sync your todos.
+      </p>
       <form
         className="flex flex-col gap-2"
-        onSubmit={(e) => {
+        onSubmit={(e: FormEvent<HTMLFormElement>) => {
           e.preventDefault();
-          const formData = new FormData(e.target);
+          const formData = new FormData(e.currentTarget);
           formData.set("flow", flow);
-          void signIn("password", formData).catch((error) => {
-            setError(error.message);
+          void signIn("password", formData).catch((err: Error) => {
+            setError(err.message);
           });
         }}
       >
@@ -73,37 +101,40 @@ function SignInForm() {
           type="email"
           name="email"
           placeholder="Email"
+          autoComplete="email"
+          required
         />
         <input
           className="bg-light dark:bg-dark text-dark dark:text-light rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
           type="password"
           name="password"
           placeholder="Password"
+          autoComplete={flow === "signIn" ? "current-password" : "new-password"}
+          required
         />
         <button
-          className="bg-dark dark:bg-light text-light dark:text-dark rounded-md"
+          className="bg-dark dark:bg-light text-light dark:text-dark rounded-md py-2 font-medium"
           type="submit"
         >
           {flow === "signIn" ? "Sign in" : "Sign up"}
         </button>
-        <div className="flex flex-row gap-2">
+        <div className="flex flex-row gap-2 text-sm">
           <span>
             {flow === "signIn"
               ? "Don't have an account?"
               : "Already have an account?"}
           </span>
-          <span
-            className="text-dark dark:text-light underline hover:no-underline cursor-pointer"
+          <button
+            type="button"
+            className="underline hover:no-underline"
             onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
           >
             {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
-          </span>
+          </button>
         </div>
         {error && (
           <div className="bg-red-500/20 border-2 border-red-500/50 rounded-md p-2">
-            <p className="text-dark dark:text-light font-mono text-xs">
-              Error signing in: {error}
-            </p>
+            <p className="font-mono text-xs">Error: {error}</p>
           </div>
         )}
       </form>
@@ -111,108 +142,316 @@ function SignInForm() {
   );
 }
 
-function Content() {
-  const { viewer, numbers } =
-    useQuery(api.myFunctions.listNumbers, {
-      count: 10,
-    }) ?? {};
-  const addNumber = useMutation(api.myFunctions.addNumber);
+function TodoApp() {
+  const todos = useQuery(api.todos.list, {});
+  const filter = useHashFilter();
 
-  if (viewer === undefined || numbers === undefined) {
-    return (
-      <div className="mx-auto">
-        <p>loading... (consider a loading skeleton)</p>
-      </div>
+  const create = useMutation(api.todos.create).withOptimisticUpdate(
+    (localStore, { text }) => {
+      const existing = localStore.getQuery(api.todos.list, {});
+      if (existing === undefined) return;
+      const trimmed = text.trim();
+      if (trimmed === "") return;
+      const lastTime = existing[existing.length - 1]?._creationTime ?? 0;
+      const optimistic: Doc<"todos"> = {
+        _id: crypto.randomUUID() as Id<"todos">,
+        _creationTime: lastTime + 1,
+        userId: existing[0]?.userId ?? ("optimistic" as Id<"users">),
+        text: trimmed,
+        completed: false,
+      };
+      localStore.setQuery(api.todos.list, {}, [...existing, optimistic]);
+    },
+  );
+  const setCompleted = useMutation(api.todos.setCompleted).withOptimisticUpdate(
+    (localStore, { id, completed }) => {
+      const existing = localStore.getQuery(api.todos.list, {});
+      if (existing === undefined) return;
+      localStore.setQuery(
+        api.todos.list,
+        {},
+        existing.map((t) => (t._id === id ? { ...t, completed } : t)),
+      );
+    },
+  );
+  const rename = useMutation(api.todos.rename).withOptimisticUpdate(
+    (localStore, { id, text }) => {
+      const existing = localStore.getQuery(api.todos.list, {});
+      if (existing === undefined) return;
+      const trimmed = text.trim();
+      const next =
+        trimmed === ""
+          ? existing.filter((t) => t._id !== id)
+          : existing.map((t) => (t._id === id ? { ...t, text: trimmed } : t));
+      localStore.setQuery(api.todos.list, {}, next);
+    },
+  );
+  const remove = useMutation(api.todos.remove).withOptimisticUpdate(
+    (localStore, { id }) => {
+      const existing = localStore.getQuery(api.todos.list, {});
+      if (existing === undefined) return;
+      localStore.setQuery(
+        api.todos.list,
+        {},
+        existing.filter((t) => t._id !== id),
+      );
+    },
+  );
+  const toggleAll = useMutation(api.todos.toggleAll).withOptimisticUpdate(
+    (localStore, { completed }) => {
+      const existing = localStore.getQuery(api.todos.list, {});
+      if (existing === undefined) return;
+      localStore.setQuery(
+        api.todos.list,
+        {},
+        existing.map((t) => ({ ...t, completed })),
+      );
+    },
+  );
+  const clearCompleted = useMutation(
+    api.todos.clearCompleted,
+  ).withOptimisticUpdate((localStore) => {
+    const existing = localStore.getQuery(api.todos.list, {});
+    if (existing === undefined) return;
+    localStore.setQuery(
+      api.todos.list,
+      {},
+      existing.filter((t) => !t.completed),
     );
-  }
+  });
+
+  const visible = useMemo(() => {
+    if (todos === undefined) return undefined;
+    if (filter === "active") return todos.filter((t) => !t.completed);
+    if (filter === "completed") return todos.filter((t) => t.completed);
+    return todos;
+  }, [todos, filter]);
+
+  const remaining = todos?.filter((t) => !t.completed).length ?? 0;
+  const completedCount = (todos?.length ?? 0) - remaining;
+  const allCompleted = (todos?.length ?? 0) > 0 && remaining === 0;
 
   return (
-    <div className="flex flex-col gap-8 max-w-lg mx-auto">
-      <p>Welcome {viewer ?? "Anonymous"}!</p>
-      <p>
-        Click the button below and open this page in another window - this data
-        is persisted in the Convex cloud database!
-      </p>
-      <p>
-        <button
-          className="bg-dark dark:bg-light text-light dark:text-dark text-sm px-4 py-2 rounded-md border-2"
-          onClick={() => {
-            void addNumber({ value: Math.floor(Math.random() * 10) });
-          }}
-        >
-          Add a random number
-        </button>
-      </p>
-      <p>
-        Numbers:{" "}
-        {numbers?.length === 0
-          ? "Click the button!"
-          : (numbers?.join(", ") ?? "...")}
-      </p>
-      <p>
-        Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded-md">
-          convex/myFunctions.ts
-        </code>{" "}
-        to change your backend
-      </p>
-      <p>
-        Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded-md">
-          src/App.tsx
-        </code>{" "}
-        to change your frontend
-      </p>
-      <div className="flex flex-col">
-        <p className="text-lg font-bold">Useful resources:</p>
-        <div className="flex gap-2">
-          <div className="flex flex-col gap-2 w-1/2">
-            <ResourceCard
-              title="Convex docs"
-              description="Read comprehensive documentation for all Convex features."
-              href="https://docs.convex.dev/home"
-            />
-            <ResourceCard
-              title="Stack articles"
-              description="Learn about best practices, use cases, and more from a growing
-            collection of articles, videos, and walkthroughs."
-              href="https://www.typescriptlang.org/docs/handbook/2/basic-types.html"
-            />
+    <section className="w-full max-w-xl bg-light dark:bg-dark border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg">
+      <NewTodoInput
+        onCreate={(text) => {
+          void create({ text }).catch(() => {});
+        }}
+      />
+      {todos === undefined ? (
+        <p className="p-4 text-sm text-slate-500">Loading…</p>
+      ) : todos.length === 0 ? (
+        <p className="p-4 text-sm text-slate-500">
+          No todos yet — add one above.
+        </p>
+      ) : (
+        <>
+          <div className="flex items-center border-b border-slate-200 dark:border-slate-800">
+            <button
+              aria-label="Toggle all"
+              onClick={() => void toggleAll({ completed: !allCompleted })}
+              className={`px-4 py-2 text-xl ${allCompleted ? "text-slate-700 dark:text-slate-200" : "text-slate-300 dark:text-slate-600"}`}
+            >
+              ❯
+            </button>
+            <span className="text-xs text-slate-400 select-none">
+              toggle all
+            </span>
           </div>
-          <div className="flex flex-col gap-2 w-1/2">
-            <ResourceCard
-              title="Templates"
-              description="Browse our collection of templates to get started quickly."
-              href="https://www.convex.dev/templates"
-            />
-            <ResourceCard
-              title="Discord"
-              description="Join our developer community to ask questions, trade tips & tricks,
-            and show off your projects."
-              href="https://www.convex.dev/community"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+          <ul>
+            {visible?.map((todo) => (
+              <TodoItem
+                key={todo._id}
+                todo={todo}
+                onToggle={(completed) =>
+                  void setCompleted({ id: todo._id, completed }).catch(
+                    () => {},
+                  )
+                }
+                onRename={(text) =>
+                  void rename({ id: todo._id, text }).catch(() => {})
+                }
+                onRemove={() =>
+                  void remove({ id: todo._id }).catch(() => {})
+                }
+              />
+            ))}
+          </ul>
+          <Footer
+            remaining={remaining}
+            completedCount={completedCount}
+            filter={filter}
+            onClearCompleted={() => void clearCompleted({}).catch(() => {})}
+          />
+        </>
+      )}
+    </section>
   );
 }
 
-function ResourceCard({
-  title,
-  description,
-  href,
+function NewTodoInput({ onCreate }: { onCreate: (text: string) => void }) {
+  const [value, setValue] = useState("");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const trimmed = value.trim();
+        if (trimmed === "") return;
+        onCreate(trimmed);
+        setValue("");
+      }}
+      className="border-b border-slate-200 dark:border-slate-800"
+    >
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="What needs to be done?"
+        className="w-full bg-transparent px-4 py-4 text-lg italic placeholder:text-slate-400 focus:outline-none"
+      />
+    </form>
+  );
+}
+
+function TodoItem({
+  todo,
+  onToggle,
+  onRename,
+  onRemove,
 }: {
-  title: string;
-  description: string;
-  href: string;
+  todo: Doc<"todos">;
+  onToggle: (completed: boolean) => void;
+  onRename: (text: string) => void;
+  onRemove: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(todo.text);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const startEditing = () => {
+    setDraft(todo.text);
+    setEditing(true);
+  };
+
+  const commit = () => {
+    if (!editing) return;
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed === todo.text) return;
+    onRename(trimmed);
+  };
+  const cancel = () => {
+    setEditing(false);
+    setDraft(todo.text);
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") commit();
+    else if (e.key === "Escape") cancel();
+  };
+
+  return (
+    <li className="group flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-900">
+      <input
+        type="checkbox"
+        checked={todo.completed}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="size-5 accent-emerald-500"
+      />
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={onKey}
+          className="flex-1 bg-transparent border border-slate-300 dark:border-slate-700 rounded px-2 py-1 focus:outline-none"
+        />
+      ) : (
+        <label
+          onDoubleClick={startEditing}
+          className={`flex-1 cursor-pointer break-words ${todo.completed ? "line-through text-slate-400" : ""}`}
+        >
+          {todo.text}
+        </label>
+      )}
+      <button
+        onClick={onRemove}
+        aria-label="Delete todo"
+        className="text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        ✕
+      </button>
+    </li>
+  );
+}
+
+function Footer({
+  remaining,
+  completedCount,
+  filter,
+  onClearCompleted,
+}: {
+  remaining: number;
+  completedCount: number;
+  filter: Filter;
+  onClearCompleted: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 bg-slate-200 dark:bg-slate-800 p-4 rounded-md h-28 overflow-auto">
-      <a href={href} className="text-sm underline hover:no-underline">
-        {title}
-      </a>
-      <p className="text-xs">{description}</p>
-    </div>
+    <footer className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm text-slate-500">
+      <span>
+        <strong className="text-dark dark:text-light">{remaining}</strong>{" "}
+        {remaining === 1 ? "item" : "items"} left
+      </span>
+      <nav className="flex gap-1">
+        <FilterLink current={filter} value="all" href="#/" label="All" />
+        <FilterLink
+          current={filter}
+          value="active"
+          href="#/active"
+          label="Active"
+        />
+        <FilterLink
+          current={filter}
+          value="completed"
+          href="#/completed"
+          label="Completed"
+        />
+      </nav>
+      <button
+        onClick={onClearCompleted}
+        className={`hover:underline ${completedCount === 0 ? "invisible" : ""}`}
+      >
+        Clear completed
+      </button>
+    </footer>
+  );
+}
+
+function FilterLink({
+  current,
+  value,
+  href,
+  label,
+}: {
+  current: Filter;
+  value: Filter;
+  href: string;
+  label: string;
+}) {
+  const active = current === value;
+  return (
+    <a
+      href={href}
+      className={`px-2 py-1 rounded border ${active ? "border-rose-400/60" : "border-transparent hover:border-slate-300 dark:hover:border-slate-700"}`}
+    >
+      {label}
+    </a>
   );
 }
