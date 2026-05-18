@@ -1,12 +1,11 @@
 import {
   Accessor,
-  JSX,
   createContext,
   createEffect,
   createSignal,
-  onCleanup,
   useContext,
 } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { ConvexClient } from "convex/browser";
 import type {
   FunctionArgs,
@@ -21,9 +20,9 @@ export function ConvexProvider(props: {
   children: JSX.Element;
 }) {
   return (
-    <ConvexContext.Provider value={props.client}>
+    <ConvexContext value={props.client}>
       {props.children}
-    </ConvexContext.Provider>
+    </ConvexContext>
   );
 }
 
@@ -40,11 +39,11 @@ export function createConvexQuery<Query extends FunctionReference<"query">>(
   const client = useConvex();
   const [value, setValue] = createSignal<FunctionReturnType<Query>>();
 
-  createEffect(() => {
-    const unsubscribe = client.onUpdate(query, args(), (nextValue) => {
+  createEffect(args, (nextArgs) => {
+    const unsubscribe = client.onUpdate(query, nextArgs, (nextValue) => {
       setValue(() => nextValue);
     });
-    onCleanup(unsubscribe);
+    return unsubscribe;
   });
 
   return value;

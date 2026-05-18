@@ -1,4 +1,4 @@
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import { ConvexClient } from "convex/browser";
 import "./index.css";
 import App from "./App";

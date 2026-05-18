@@ -178,12 +178,15 @@ function TodoItem(props: {
   const [draft, setDraft] = createSignal(props.todo.text);
   let inputRef: HTMLInputElement | undefined;
 
-  createEffect(() => {
-    if (editing()) {
-      inputRef?.focus();
-      inputRef?.select();
-    }
-  });
+  createEffect(
+    () => editing(),
+    (isEditing) => {
+      if (isEditing) {
+        inputRef?.focus();
+        inputRef?.select();
+      }
+    },
+  );
 
   const startEditing = () => {
     setDraft(props.todo.text);
