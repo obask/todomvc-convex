@@ -17,6 +17,9 @@ importers:
       convex:
         specifier: ^1.39.1
         version: 1.39.1
+      convex-solidjs:
+        specifier: github:obask/convex-solidjs#dist
+        version: https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)
       solid-js:
         specifier: 2.0.0-beta.13
         version: 2.0.0-beta.13
@@ -811,6 +814,14 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  convex-solidjs@https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a:
+    resolution: {gitHosted: true, integrity: sha512-Q1QIAIccE48oHPiaFtnbQxndVH3ETSIijzNsIVz6H00THj3jny+jflyBtsfw9siOcPRhzD/EEfdO42KD2wF9xw==, tarball: https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a}
+    version: 0.0.2
+    engines: {node: '>=24', pnpm: '>=10.0.0'}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-beta.2
+      solid-js: ^2.0.0-beta.2
 
   convex@1.39.1:
     resolution: {integrity: sha512-W+gVXA7BpRF1xLlS1kGTtKVaqd5yonqbGESKiPtIUXjV744GdDz8IG7RVsSY5KzHbgxuJBHKaJYk+92OIHTskQ==}
@@ -2101,6 +2112,19 @@ snapshots:
   caniuse-lite@1.0.30001793: {}
 
   convert-source-map@2.0.0: {}
+
+  convex-solidjs@https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13):
+    dependencies:
+      '@solidjs/web': 2.0.0-beta.13(solid-js@2.0.0-beta.13)
+      convex: 1.39.1
+      solid-js: 2.0.0-beta.13
+    transitivePeerDependencies:
+      - '@auth0/auth0-react'
+      - '@clerk/clerk-react'
+      - '@clerk/react'
+      - bufferutil
+      - react
+      - utf-8-validate
 
   convex@1.39.1:
     dependencies:

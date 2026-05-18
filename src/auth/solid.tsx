@@ -18,7 +18,7 @@ import type { ConvexClient } from "convex/browser";
 import type { FunctionReference } from "convex/server";
 import type { Value } from "convex/values";
 import { api } from "../../convex/_generated/api";
-import { ConvexContext } from "../convex/solid";
+import { ConvexProvider } from "convex-solidjs";
 
 const JWT_STORAGE_KEY = "__convexAuthJWT";
 const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
@@ -202,7 +202,7 @@ export function ConvexAuthProvider(props: {
   };
 
   return (
-    <ConvexContext value={client}>
+    <ConvexProvider client={client}>
       <AuthStateContext value={state}>
         <AuthActionsContext value={{ signIn, signOut }}>
           <AuthTokenContext value={tokenSignal}>
@@ -210,7 +210,7 @@ export function ConvexAuthProvider(props: {
           </AuthTokenContext>
         </AuthActionsContext>
       </AuthStateContext>
-    </ConvexContext>
+    </ConvexProvider>
   );
 }
 

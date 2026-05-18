@@ -10,8 +10,8 @@ import {
 } from "solid-js";
 import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
-import type { OptimisticLocalStore } from "./convex/solid";
-import { createConvexMutation, createConvexQuery } from "./convex/solid";
+import type { OptimisticLocalStore } from "convex-solidjs";
+import { createMutation, createQuery } from "convex-solidjs";
 import {
   Authenticated,
   AuthLoading,
@@ -89,7 +89,7 @@ export default function App() {
 
 function SignOutButton() {
   const { signOut } = useAuthActions();
-  const viewer = createConvexQuery(api.todos.viewer, () => ({}));
+  const viewer = createQuery(api.todos.viewer, () => ({}));
   return (
     <div class="flex items-center gap-3 text-sm">
       <span class="text-slate-500">{viewer() ?? "anonymous"}</span>
@@ -215,7 +215,7 @@ function SignInForm() {
 }
 
 function TodoApp() {
-  const todos = createConvexQuery(api.todos.list, () => ({}));
+  const todos = createQuery(api.todos.list, () => ({}));
   const filter = createHashFilter();
 
   const patchList = (
@@ -227,7 +227,7 @@ function TodoApp() {
     store.setQuery(api.todos.list, {}, fn(existing));
   };
 
-  const create = createConvexMutation(api.todos.create).withOptimisticUpdate(
+  const create = createMutation(api.todos.create).withOptimisticUpdate(
     (store, { text }) =>
       patchList(store, (existing) => {
         const trimmed = text.trim();
@@ -245,14 +245,14 @@ function TodoApp() {
         ];
       }),
   );
-  const setCompleted = createConvexMutation(
+  const setCompleted = createMutation(
     api.todos.setCompleted,
   ).withOptimisticUpdate((store, { id, completed }) =>
     patchList(store, (existing) =>
       existing.map((t) => (t._id === id ? { ...t, completed } : t)),
     ),
   );
-  const rename = createConvexMutation(api.todos.rename).withOptimisticUpdate(
+  const rename = createMutation(api.todos.rename).withOptimisticUpdate(
     (store, { id, text }) =>
       patchList(store, (existing) => {
         const trimmed = text.trim();
@@ -261,16 +261,16 @@ function TodoApp() {
           : existing.map((t) => (t._id === id ? { ...t, text: trimmed } : t));
       }),
   );
-  const remove = createConvexMutation(api.todos.remove).withOptimisticUpdate(
+  const remove = createMutation(api.todos.remove).withOptimisticUpdate(
     (store, { id }) =>
       patchList(store, (existing) => existing.filter((t) => t._id !== id)),
   );
-  const toggleAll = createConvexMutation(
+  const toggleAll = createMutation(
     api.todos.toggleAll,
   ).withOptimisticUpdate((store, { completed }) =>
     patchList(store, (existing) => existing.map((t) => ({ ...t, completed }))),
   );
-  const clearCompleted = createConvexMutation(
+  const clearCompleted = createMutation(
     api.todos.clearCompleted,
   ).withOptimisticUpdate((store) =>
     patchList(store, (existing) => existing.filter((t) => !t.completed)),
