@@ -88,7 +88,7 @@ export function createConvexQuery<Query extends FunctionReference<"query">>(
     if (c.kind === "ok") return c.value;
     if (c.kind === "skip") return undefined;
     if (c.kind === "error") throw c.error;
-    throw new NotReadyError();
+    throw new NotReadyError(cell);
   });
 }
 
