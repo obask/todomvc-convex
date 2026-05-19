@@ -1,10 +1,6 @@
-import { AuthConfig } from "convex/server";
+import type { AuthConfig } from "convex/server";
+import { authConfigProvider } from "./simpleAuth/authConfig";
 
 export default {
-  providers: [
-    {
-      domain: process.env.CONVEX_SITE_URL!,
-      applicationID: "convex",
-    },
-  ],
+  providers: [authConfigProvider()],
 } satisfies AuthConfig;

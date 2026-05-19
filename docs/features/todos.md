@@ -4,5 +4,5 @@
 
 **Where:**
 - [convex/schema.ts](../../convex/schema.ts) — `todos` table with `by_user` and `by_user_and_completed` indexes.
-- [convex/todos.ts](../../convex/todos.ts) — `list`, `create`, `setCompleted`, `rename`, `remove`, `toggleAll`, `clearCompleted`, `viewer`. All scope by `getAuthUserId(ctx)`; never accept a userId arg.
+- [convex/todos.ts](../../convex/todos.ts) — `list`, `create`, `setCompleted`, `rename`, `remove`, `toggleAll`, `clearCompleted`, `viewer`. All derive the authenticated user server-side from `ctx.auth.getUserIdentity()`; never accept a userId arg.
 - [src/App.tsx](../../src/App.tsx) — `TodoApp`, `NewTodoInput`, `TodoItem`, `Footer`, `useHashFilter`. Each mutation has a matching `withOptimisticUpdate` patcher over the `api.todos.list` cache.

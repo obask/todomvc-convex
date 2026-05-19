@@ -3,12 +3,13 @@
 import {
   Authenticated,
   Unauthenticated,
+  useAction,
   useConvexAuth,
   useMutation,
   useQuery,
 } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { tokenStore } from "./lib/auth";
 import {
   FormEvent,
   KeyboardEvent,
@@ -29,12 +30,11 @@ function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
     message.includes("JWT_PRIVATE_KEY") ||
     message.includes("Missing environment variable")
   ) {
-    return "Authentication is not configured for this deployment. Set up Convex Auth environment variables and try again.";
+    return "Authentication is not configured for this deployment. Set JWT_PRIVATE_KEY in Convex and try again.";
   }
 
   if (
-    message.includes("InvalidAccountId") ||
-    message.includes("InvalidSecret") ||
+    message.includes("Invalid email or password") ||
     message.includes("Server Error")
   ) {
     return flow === "signIn"
@@ -90,12 +90,11 @@ export default function App() {
 
 function SignOutButton() {
   const { isAuthenticated } = useConvexAuth();
-  const { signOut } = useAuthActions();
   if (!isAuthenticated) return null;
   return (
     <button
       className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-3 py-1 text-sm hover:bg-slate-300 dark:hover:bg-slate-700"
-      onClick={() => void signOut()}
+      onClick={() => tokenStore.clear()}
     >
       Sign out
     </button>
@@ -103,7 +102,8 @@ function SignOutButton() {
 }
 
 function SignInForm() {
-  const { signIn } = useAuthActions();
+  const signIn = useAction(api.auth.signIn);
+  const signUp = useAction(api.auth.signUp);
   const [flow, setFlow] = useState<AuthFlow>("signIn");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -117,10 +117,16 @@ function SignInForm() {
         onSubmit={(e: FormEvent<HTMLFormElement>) => {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
-          formData.set("flow", flow);
+          const emailValue = formData.get("email");
+          const passwordValue = formData.get("password");
+          const email = typeof emailValue === "string" ? emailValue : "";
+          const password =
+            typeof passwordValue === "string" ? passwordValue : "";
           setError(null);
           setIsSubmitting(true);
-          void signIn("password", formData)
+          const authAction = flow === "signIn" ? signIn : signUp;
+          void authAction({ email, password })
+            .then((token) => tokenStore.set(token))
             .catch((err: unknown) => {
               setError(getAuthErrorMessage(err, flow));
             })
