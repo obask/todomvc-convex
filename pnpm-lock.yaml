@@ -816,7 +816,7 @@ packages:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
   convex-solidjs@https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a:
-    resolution: {gitHosted: true, integrity: sha512-Q1QIAIccE48oHPiaFtnbQxndVH3ETSIijzNsIVz6H00THj3jny+jflyBtsfw9siOcPRhzD/EEfdO42KD2wF9xw==, tarball: https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/obask/convex-solidjs/tar.gz/c48dacf22d195573723ed05a73804ae3256b963a}
     version: 0.0.2
     engines: {node: '>=24', pnpm: '>=10.0.0'}
     peerDependencies:
