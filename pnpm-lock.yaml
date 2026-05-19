@@ -12,8 +12,8 @@ importers:
         specifier: ^1.39.1
         version: 1.39.1(react@19.2.6)
       convex-simple-auth:
-        specifier: file:/Users/oleg/ClaudeProjects/convex-simple-auth--main
-        version: file:../convex-simple-auth--main(convex@1.39.1(react@19.2.6))(jose@6.2.3)(react@19.2.6)
+        specifier: github:obask/convex-simple-auth#dist
+        version: https://codeload.github.com/obask/convex-simple-auth/tar.gz/84354a042a1334e1f303579a48741000304dbb8e(convex@1.39.1(react@19.2.6))(jose@6.2.3)(react@19.2.6)
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -757,8 +757,9 @@ packages:
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
-  convex-simple-auth@file:../convex-simple-auth--main:
-    resolution: {directory: ../convex-simple-auth--main, type: directory}
+  convex-simple-auth@https://codeload.github.com/obask/convex-simple-auth/tar.gz/84354a042a1334e1f303579a48741000304dbb8e:
+    resolution: {gitHosted: true, integrity: sha512-l0L/fIm24Ft2FD28k2UWRwmDyQbxxaNYPKI+E5jGP1/tb82saf+ysLJog7b7yvFJmgwDjLCbIeSoN2nJOoQyBg==, tarball: https://codeload.github.com/obask/convex-simple-auth/tar.gz/84354a042a1334e1f303579a48741000304dbb8e}
+    version: 0.1.0
     hasBin: true
     peerDependencies:
       convex: '>=1.20.0'
@@ -1922,7 +1923,7 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convex-simple-auth@file:../convex-simple-auth--main(convex@1.39.1(react@19.2.6))(jose@6.2.3)(react@19.2.6):
+  convex-simple-auth@https://codeload.github.com/obask/convex-simple-auth/tar.gz/84354a042a1334e1f303579a48741000304dbb8e(convex@1.39.1(react@19.2.6))(jose@6.2.3)(react@19.2.6):
     dependencies:
       convex: 1.39.1(react@19.2.6)
       jose: 6.2.3

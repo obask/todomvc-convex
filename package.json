@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "convex": "^1.39.1",
-    "convex-simple-auth": "file:/Users/oleg/ClaudeProjects/convex-simple-auth--main",
+    "convex-simple-auth": "github:obask/convex-simple-auth#dist",
     "jose": "^6.2.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
