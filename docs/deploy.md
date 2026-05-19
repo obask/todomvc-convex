@@ -26,51 +26,37 @@ Add `CONVEX_DEPLOY_KEY` twice, scoped to different environments:
 | `CONVEX_DEPLOY_KEY` | production deploy key from Convex | **Production** only |
 | `CONVEX_DEPLOY_KEY` | preview deploy key from Convex | **Preview** only |
 
-You do **not** need to set `VITE_CONVEX_URL` — `convex deploy --cmd` injects it into the build automatically.
+You also need `VITE_CONVEX_SITE_URL` (the Convex `*.convex.site` HTTP-actions URL for that deployment) so the Better Auth client can reach the auth routes. `VITE_CONVEX_URL` is injected automatically by `convex deploy --cmd`.
 
-## Setting Convex Auth variables
+## Setting Better Auth variables on Convex
 
-Convex Auth also needs backend environment variables on every Convex deployment. In particular, `JWT_PRIVATE_KEY` must exist in the Convex deployment used by the app. If it is missing, sign-in or sign-up will fail with a server error that mentions `Missing environment variable JWT_PRIVATE_KEY`.
+Each Convex deployment that serves auth needs:
 
-For local development, the repo's `predev` script runs `node setup.mjs --once`, which invokes the Convex Auth setup helper. For deployed environments, run the same helper against the target Convex deployment after it exists:
+| Variable | Where | Notes |
+|---|---|---|
+| `BETTER_AUTH_SECRET` | Convex env | 32-byte random string. Generate with `openssl rand -base64 32`. |
+| `SITE_URL` | Convex env | Public origin of the deployed frontend (e.g. `https://my-app.vercel.app`). Used as a trusted origin and for cross-domain cookies. |
+
+Set them with the CLI against the target deployment:
 
 ```bash
-pnpm exec auth --skip-git-check
+pnpm exec convex env set BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+pnpm exec convex env set SITE_URL https://my-app.vercel.app
 ```
 
-If you use separate production and preview Convex deploy keys, make sure Convex Auth is configured for each deployment you expect users to sign in to.
+For Vercel preview deployments, configure these as **Convex project default environment variables for preview deployments** before Vercel creates them — Convex copies the defaults into each new preview deployment at creation time. Use `SITE_URL` set to a placeholder if you need a single default; otherwise set it per preview after Vercel publishes the URL.
 
-For preview deployments created by Vercel, configure Convex project default environment variables for preview deployments before Vercel creates them. Convex copies project defaults into new deployments at creation time. See [Convex Auth preview keys](../README.md#convex-auth-preview-keys) for a copy-paste script that generates and applies the matching key pair.
-
-Existing preview deployments are not updated when defaults change; recreate them or set variables directly on the named preview deployment:
+Existing preview deployments are not updated when defaults change; recreate them or set values directly on the named preview deployment:
 
 ```bash
-pnpm exec auth --preview-name '<branch-name>' --skip-git-check
-```
-
-Equivalent CLI:
-
-```bash
-# Production
-vercel env add CONVEX_DEPLOY_KEY production
-# paste the production deploy key when prompted
-
-# Preview (applies to all preview branches)
-vercel env add CONVEX_DEPLOY_KEY preview
-# paste the preview deploy key when prompted
-```
-
-To scope a preview value to a specific branch only, use the dashboard's **Custom Environment** option or:
-
-```bash
-vercel env add CONVEX_DEPLOY_KEY preview <branch-name>
+pnpm exec convex env --preview-name '<branch-name>' set SITE_URL https://<branch>.vercel.app
 ```
 
 ## How preview deployments work
 
 Each Vercel preview deployment (one per PR / branch push) invokes the build with the **preview** `CONVEX_DEPLOY_KEY`. Convex provisions a fresh preview backend named after the git branch, deploys the current schema and functions to it, and `VITE_CONVEX_URL` in the resulting bundle points at *that* preview backend — never at production.
 
-Authenticated users on a preview URL therefore sign up against the preview backend's empty `users` table; production data stays untouched. Convex garbage-collects preview deployments after the associated branch is deleted.
+Authenticated users on a preview URL therefore sign up against the preview backend's empty Better Auth tables; production data stays untouched. Convex garbage-collects preview deployments after the associated branch is deleted.
 
 ## Sanity checks
 

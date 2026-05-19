@@ -1,12 +1,11 @@
 import { v } from "convex/values";
 import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { Id } from "./_generated/dataModel";
 
-async function requireUserId(ctx: QueryCtx | MutationCtx): Promise<Id<"users">> {
-  const userId = await getAuthUserId(ctx);
-  if (userId === null) throw new Error("Not authenticated");
-  return userId;
+async function requireUserId(ctx: QueryCtx | MutationCtx): Promise<string> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity === null) throw new Error("Not authenticated");
+  return identity.subject;
 }
 
 async function getOwnedTodo(ctx: MutationCtx, id: Id<"todos">) {
@@ -22,11 +21,11 @@ async function getOwnedTodo(ctx: MutationCtx, id: Id<"todos">) {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) return [];
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) return [];
     return await ctx.db
       .query("todos")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .collect();
   },
 });
@@ -103,15 +102,5 @@ export const clearCompleted = mutation({
     for (const todo of done) {
       await ctx.db.delete("todos", todo._id);
     }
-  },
-});
-
-export const viewer = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) return null;
-    const user = await ctx.db.get("users", userId);
-    return user?.email ?? null;
   },
 });

@@ -8,7 +8,7 @@ import {
   useQuery,
 } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { authClient } from "./lib/auth-client";
 import {
   FormEvent,
   KeyboardEvent,
@@ -17,31 +17,16 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Doc, Id } from "../convex/_generated/dataModel";
+import type { Doc } from "../convex/_generated/dataModel";
 
 type Filter = "all" | "active" | "completed";
 type AuthFlow = "signIn" | "signUp";
 
 function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
   const message = error instanceof Error ? error.message : String(error);
-
-  if (
-    message.includes("JWT_PRIVATE_KEY") ||
-    message.includes("Missing environment variable")
-  ) {
-    return "Authentication is not configured for this deployment. Set up Convex Auth environment variables and try again.";
+  if (message) {
+    return message;
   }
-
-  if (
-    message.includes("InvalidAccountId") ||
-    message.includes("InvalidSecret") ||
-    message.includes("Server Error")
-  ) {
-    return flow === "signIn"
-      ? "Invalid email or password."
-      : "Could not create that account. Try another email or password.";
-  }
-
   return flow === "signIn"
     ? "Sign in failed. Check your email and password and try again."
     : "Sign up failed. Check your email and password and try again.";
@@ -90,12 +75,11 @@ export default function App() {
 
 function SignOutButton() {
   const { isAuthenticated } = useConvexAuth();
-  const { signOut } = useAuthActions();
   if (!isAuthenticated) return null;
   return (
     <button
       className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-3 py-1 text-sm hover:bg-slate-300 dark:hover:bg-slate-700"
-      onClick={() => void signOut()}
+      onClick={() => void authClient.signOut()}
     >
       Sign out
     </button>
@@ -103,7 +87,6 @@ function SignOutButton() {
 }
 
 function SignInForm() {
-  const { signIn } = useAuthActions();
   const [flow, setFlow] = useState<AuthFlow>("signIn");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -117,10 +100,25 @@ function SignInForm() {
         onSubmit={(e: FormEvent<HTMLFormElement>) => {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
-          formData.set("flow", flow);
+          const email = String(formData.get("email") ?? "");
+          const password = String(formData.get("password") ?? "");
           setError(null);
           setIsSubmitting(true);
-          void signIn("password", formData)
+          const action =
+            flow === "signIn"
+              ? authClient.signIn.email({ email, password })
+              : authClient.signUp.email({ email, password, name: email });
+          void action
+            .then((result) => {
+              if (result.error) {
+                setError(
+                  getAuthErrorMessage(
+                    new Error(result.error.message ?? "Auth failed"),
+                    flow,
+                  ),
+                );
+              }
+            })
             .catch((err: unknown) => {
               setError(getAuthErrorMessage(err, flow));
             })
@@ -199,9 +197,9 @@ function TodoApp() {
       if (trimmed === "") return;
       const lastTime = existing[existing.length - 1]?._creationTime ?? 0;
       const optimistic: Doc<"todos"> = {
-        _id: crypto.randomUUID() as Id<"todos">,
+        _id: crypto.randomUUID() as Doc<"todos">["_id"],
         _creationTime: lastTime + 1,
-        userId: existing[0]?.userId ?? ("optimistic" as Id<"users">),
+        userId: existing[0]?.userId ?? "optimistic",
         text: trimmed,
         completed: false,
       };
