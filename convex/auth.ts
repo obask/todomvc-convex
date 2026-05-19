@@ -1,39 +1,48 @@
-/// <reference types="node" />
-import { createClient, type CreateAuth } from "@convex-dev/better-auth";
-import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
-import { components } from "./_generated/api";
-import { DataModel } from "./_generated/dataModel";
-import { query } from "./_generated/server";
-import authConfig from "./auth.config";
+import { v } from "convex/values";
+import {
+  hashPassword,
+  normalizeEmail,
+  signJwt,
+  verifyPassword,
+} from "convex-simple-auth/server";
+import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
 
-const siteUrl = process.env.SITE_URL!;
-const devOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:5173",
-];
+export const signUp = action({
+  args: { email: v.string(), password: v.string() },
+  handler: async (ctx, { email, password }): Promise<string> => {
+    const e = normalizeEmail(email);
+    if (!e || password.length < 8) {
+      throw new Error(
+        "Email is required and password must be at least 8 characters.",
+      );
+    }
+    const existing = await ctx.runQuery(internal.users.getByEmail, {
+      email: e,
+    });
+    if (existing !== null) {
+      throw new Error("An account with that email already exists.");
+    }
+    const userId = await ctx.runMutation(internal.users.create, {
+      email: e,
+      passwordHash: await hashPassword(password),
+    });
+    return signJwt(userId, { claims: { email: e } });
+  },
+});
 
-export const authComponent = createClient<DataModel>(components.betterAuth);
-
-export const createAuth: CreateAuth<DataModel> = (ctx) => {
-  const options: BetterAuthOptions = {
-    baseURL: process.env.CONVEX_SITE_URL,
-    trustedOrigins: [siteUrl, ...devOrigins],
-    database: authComponent.adapter(ctx),
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: false,
-    },
-    plugins: [crossDomain({ siteUrl }), convex({ authConfig })],
-  };
-  return betterAuth(options);
-};
-
-export const getCurrentUser = query({
-  args: {},
-  handler: async (ctx) => {
-    return authComponent.getAuthUser(ctx);
+export const signIn = action({
+  args: { email: v.string(), password: v.string() },
+  handler: async (ctx, { email, password }): Promise<string> => {
+    const e = normalizeEmail(email);
+    const user = await ctx.runQuery(internal.users.getByEmail, { email: e });
+    if (
+      !user ||
+      !user.passwordHash ||
+      !(await verifyPassword(password, user.passwordHash))
+    ) {
+      throw new Error("Invalid email or password.");
+    }
+    return signJwt(user._id, { claims: { email: e } });
   },
 });
