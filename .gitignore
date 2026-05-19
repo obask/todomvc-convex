@@ -27,3 +27,4 @@ convex-auth-preview.env
 
 # Claude Code local state
 .claude/scheduled_tasks.lock
+.env*.local
