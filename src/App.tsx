@@ -29,7 +29,7 @@ function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
     message.includes("JWT_PRIVATE_KEY") ||
     message.includes("Missing environment variable")
   ) {
-    return "Authentication is not configured for this deployment. Set up Convex Auth environment variables and try again.";
+    return "Authentication is not configured for this deployment. Set up simple-auth keys and try again.";
   }
   if (
     message.includes("InvalidAccountId") ||

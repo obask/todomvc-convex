@@ -1,6 +1,6 @@
 /**
- * This script runs `pnpm exec auth` to help with setting up
- * environment variables for Convex Auth.
+ * This script runs `pnpm exec convex-simple-auth-keys` to set up
+ * the JWT keypair used by convex-simple-auth.
  *
  * You can safely delete it and remove it from package.json scripts.
  */
@@ -26,7 +26,7 @@ if (runOnceWorkflow && config.SETUP_SCRIPT_RAN !== undefined) {
 
 const result = spawnSync(
   "pnpm",
-  ["exec", "auth", "--skip-git-check"],
+  ["exec", "convex-simple-auth-keys"],
   {
     stdio: "inherit",
   },

@@ -10,8 +10,8 @@ The app uses:
 - [Tailwind CSS](https://tailwindcss.com/) for styling.
 
 The Solid UI talks to Convex through [`convex-solidjs`](https://github.com/obask/convex-solidjs).
-Todos are scoped to the authenticated Convex Auth user in `convex/todos.ts`.
-Users can sign in with email and password or use the anonymous provider through the
+Todos are scoped to the authenticated `convex-simple-auth` user in `convex/todos.ts`.
+Users can sign in with email and password or use anonymous auth through the
 "Continue without an account" button.
 
 ## Get started
@@ -23,7 +23,7 @@ pnpm install
 pnpm run dev
 ```
 
-The `predev` script runs `convex init` and the Convex Auth setup helper once.
+The `predev` script runs `convex init` and the `convex-simple-auth` key setup helper once.
 Follow the prompts from the Convex CLI if this is your first local deployment.
 
 Useful follow-up docs:
@@ -31,42 +31,22 @@ Useful follow-up docs:
 - [Todo feature notes](docs/features/todos.md)
 - [Solid + Convex adapter notes](docs/solid-convex-adapter.md)
 - [Vercel deployment notes](docs/deploy.md)
-- [Convex Auth docs](https://labs.convex.dev/auth/)
+- [`convex-simple-auth`](https://github.com/obask/convex-simple-auth)
 
-## Convex Auth preview keys
+## Simple Auth preview keys
 
-Convex Auth requires a matching `JWT_PRIVATE_KEY` and `JWKS` pair in each Convex deployment. Vercel preview builds create fresh Convex preview deployments, so set these as Convex **preview defaults** before creating previews.
+`convex-simple-auth` requires a matching `JWT_PRIVATE_KEY` environment variable and public `JWKS` block in `convex/auth.config.ts`. Vercel preview builds create fresh Convex preview deployments, so set `JWT_PRIVATE_KEY` as a Convex **preview default** before creating previews.
 
-Run this from the project root to generate the pair, apply it to Convex preview defaults, then delete the temporary secret file:
+Run this from the project root to generate a keypair, set `JWT_PRIVATE_KEY` on the current Convex deployment, and rewrite the public `JWKS` block:
 
 ```bash
-node <<'EOF' > convex-auth-preview.env
-const { generateKeyPairSync } = require("node:crypto");
-
-const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicExponent: 0x10001,
-});
-
-const privatePem = privateKey
-  .export({ type: "pkcs8", format: "pem" })
-  .trimEnd()
-  .replace(/\n/g, " ");
-const publicJwk = publicKey.export({ format: "jwk" });
-const jwks = JSON.stringify({ keys: [{ use: "sig", ...publicJwk }] });
-
-console.log(`JWT_PRIVATE_KEY="${privatePem}"`);
-console.log(`JWKS='${jwks}'`);
-EOF
-
-pnpm exec convex env default set --type preview --from-file convex-auth-preview.env
-rm convex-auth-preview.env
+pnpm exec convex-simple-auth-keys
 ```
 
-Defaults only apply to new Convex preview deployments. For an existing preview deployment, recreate it or run:
+Run with Convex deployment flags such as `--prod` or `--preview-name <branch-name>` when targeting those deployments. Defaults only apply to new Convex preview deployments. For an existing preview deployment, recreate it or run:
 
 ```bash
-pnpm exec auth --preview-name '<branch-name>' --skip-git-check
+pnpm exec convex-simple-auth-keys --preview-name '<branch-name>'
 ```
 
 ## Learn more

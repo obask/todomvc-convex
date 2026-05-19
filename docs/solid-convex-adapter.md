@@ -32,13 +32,13 @@ From `node_modules/convex/dist/esm-types/react/`. ✓ = ported to Solid, ✗ = i
 | `setupConvexHttp(url, opts?)` / `createConvexHttpClient` + `prefetchQuery(http, q, args)` | same names ✓ | SSR prefetch story. Feed result into `createQuery(..., { initialValue })`. |
 | `useMutation(m)` → `ReactMutation` | `createMutation(m)` → `ConvexMutation` ✓ | `.withOptimisticUpdate(fn)` returns a new bound callable; `pending: Accessor<boolean>`. |
 | `useAction(a)` | `createConvexAction(a)` ✓ | `pending` accessor; no optimistic updates. |
-| `useConvexAuth()` from `convex/react` | `useConvexAuth()` from `src/auth/solid.tsx` ✓ | Provided by the port of `@convex-dev/auth/react/client` (not by the protocol adapter). |
+| `useConvexAuth()` from `convex/react` | `useConvexAuth()` from `src/auth/solid.tsx` ✓ | Provided by the app's `convex-simple-auth/solid` wrapper (not by the protocol adapter). |
 | `Authenticated` / `Unauthenticated` / `AuthLoading` | same names ✓ in `src/auth/solid.tsx` | `<Show>`-based. |
 | `useConvexConnectionState()` | `createConnectionState()` ✓ | Seeded synchronously from `client.connectionState()`. |
 | `useQueries(record)` | — ✗ | Skip-token + multiple `createQuery` calls covers most cases. |
 | `usePaginatedQuery(q, args, {initialNumItems})` | — ✗ | Out of core scope; `client.onPaginatedUpdate_experimental` is available if needed. |
 | `usePreloadedQuery(preloaded)` | — ✗ | Out of core scope (SSR/server-component story). |
-| `ConvexAuthProvider` / `useAuthActions` / `useAuthToken` (`@convex-dev/auth/react`) | same names ✓ in `src/auth/solid.tsx` | Solid 2.0 port of the React client. Trimmed: no SSR `serverState`, no OAuth `?code=` handling, no cross-tab storage sync, no manual-mutex fallback. ~120 lines vs ~376. |
+| `ConvexAuthProvider` / `useAuthActions` / `useAuthToken` | same names ✓ in `src/auth/solid.tsx` | Thin Solid wrapper around `convex-simple-auth/solid`, plus app actions for password, signup, anonymous auth, and sign-out. |
 
 ## Underlying client capabilities used
 

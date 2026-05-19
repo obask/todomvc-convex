@@ -11,10 +11,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@convex-dev/auth": "^0.0.92",
     "@solidjs/web": "2.0.0-beta.13",
     "convex": "^1.39.1",
+    "convex-simple-auth": "github:obask/convex-simple-auth#dist",
     "convex-solidjs": "github:obask/convex-solidjs#dist",
+    "jose": "^6.2.3",
     "solid-js": "2.0.0-beta.13"
   },
   "devDependencies": {
