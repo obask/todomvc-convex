@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "pnpm exec convex deploy --cmd 'pnpm run build' --cmd-url-env-var-name VITE_CONVEX_URL",
+  "buildCommand": "pnpm exec convex env set SITE_URL \"${SITE_URL:-https://$VERCEL_URL}\" && pnpm exec convex deploy --cmd 'pnpm run build' --cmd-url-env-var-name VITE_CONVEX_URL",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
