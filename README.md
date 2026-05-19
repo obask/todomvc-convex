@@ -8,7 +8,7 @@ After the initial setup (<2 minutes) you'll have a working full-stack app using:
 - [React](https://react.dev/) as your frontend (web page interactivity)
 - [Vite](https://vitest.dev/) for optimized web hosting
 - [Tailwind](https://tailwindcss.com/) for building great looking UI
-- A small repo-owned Convex JWT auth implementation for email/password sign-in
+- [`convex-simple-auth`](https://github.com/obask/convex-simple-auth) for email/password JWT auth
 
 ## Get started
 
@@ -20,8 +20,9 @@ pnpm auth:keys
 pnpm run dev
 ```
 
-`pnpm auth:keys` generates an ES256 private key and stores it as the Convex
-`JWT_PRIVATE_KEY` environment variable for the selected deployment. Convex sets
+`pnpm auth:keys` runs `convex-simple-auth-keys`: it generates an ES256 keypair,
+stores the private key as the Convex `JWT_PRIVATE_KEY` environment variable, and
+rewrites the public JWKS block in `convex/auth.config.ts`. Convex sets
 `CONVEX_SITE_URL` automatically; the frontend gets `VITE_CONVEX_URL` from
 `convex dev` or `convex deploy --cmd`.
 

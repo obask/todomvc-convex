@@ -10,9 +10,6 @@
 
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
-import type * as simpleAuth_authConfig from "../simpleAuth/authConfig.js";
-import type * as simpleAuth_jwt from "../simpleAuth/jwt.js";
-import type * as simpleAuth_password from "../simpleAuth/password.js";
 import type * as todos from "../todos.js";
 import type * as users from "../users.js";
 
@@ -25,9 +22,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
-  "simpleAuth/authConfig": typeof simpleAuth_authConfig;
-  "simpleAuth/jwt": typeof simpleAuth_jwt;
-  "simpleAuth/password": typeof simpleAuth_password;
   todos: typeof todos;
   users: typeof users;
 }>;

@@ -12,14 +12,19 @@ export const getByEmail = internalQuery({
 });
 
 export const create = internalMutation({
-  args: { email: v.string(), passwordHash: v.string() },
+  args: {
+    email: v.optional(v.string()),
+    passwordHash: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .unique();
-    if (existing !== null) {
-      throw new Error("An account with that email already exists.");
+    if (args.email !== undefined) {
+      const existing = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", args.email))
+        .unique();
+      if (existing !== null) {
+        throw new Error("An account with that email already exists.");
+      }
     }
     return await ctx.db.insert("users", args);
   },

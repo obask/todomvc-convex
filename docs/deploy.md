@@ -30,7 +30,7 @@ You do **not** need to set `VITE_CONVEX_URL` — `convex deploy --cmd` injects i
 
 ## Setting auth variables
 
-The app's simple auth implementation needs `JWT_PRIVATE_KEY` in every Convex deployment. If it is missing, sign-in or sign-up will fail with a server error that mentions `JWT_PRIVATE_KEY`.
+The app uses `convex-simple-auth`, which needs `JWT_PRIVATE_KEY` in every Convex deployment. If it is missing, sign-in or sign-up will fail with a server error that mentions `JWT_PRIVATE_KEY`.
 
 For local development, run this once after `convex init` has linked the project:
 
@@ -44,14 +44,13 @@ For production, run the same helper against the production deployment after it e
 pnpm auth:keys -- --prod
 ```
 
-For preview deployments, each Convex preview backend needs its own key. Set it on a named preview deployment after Convex creates it:
+For preview deployments, each Convex preview backend needs a private key that matches the public JWKS block committed in `convex/auth.config.ts`. Set it on a named preview deployment after Convex creates it:
 
 ```bash
 pnpm auth:keys -- --preview-name '<branch-name>'
 ```
 
-The app derives the public JWKS response from `JWT_PRIVATE_KEY` at
-`/.well-known/jwks.json`, so there is no separate `JWKS` variable to manage.
+The public JWKS is committed in `convex/auth.config.ts`; there is no separate `JWKS` environment variable or Convex HTTP route to manage.
 
 Equivalent CLI:
 
