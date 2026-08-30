@@ -1,4 +1,5 @@
 import type { AuthConfig } from "convex/server";
+import { jwksProvider } from "convex-simple-auth/server";
 
 // JWKS:BEGIN (do not edit; rewritten by convex-simple-auth-keys)
 const JWKS = {
@@ -16,17 +17,6 @@ const JWKS = {
 };
 // JWKS:END
 
-const jwksDataUri =
-  "data:application/json;base64," + btoa(JSON.stringify(JWKS));
-
 export default {
-  providers: [
-    {
-      type: "customJwt",
-      issuer: process.env.CONVEX_SITE_URL!,
-      jwks: jwksDataUri,
-      algorithm: "ES256",
-      applicationID: "convex",
-    },
-  ],
+  providers: [jwksProvider(JWKS)],
 } satisfies AuthConfig;

@@ -9,7 +9,7 @@ import {
   useQuery,
 } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { tokenStore } from "./lib/auth";
+import { tokenStore } from "convex-simple-auth/react";
 import {
   FormEvent,
   KeyboardEvent,

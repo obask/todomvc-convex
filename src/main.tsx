@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
-import { useAuth } from "./lib/auth";
+import { useAuth } from "convex-simple-auth/react";
 import "./index.css";
 import App from "./App.tsx";
 
