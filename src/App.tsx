@@ -105,7 +105,7 @@ function SignOutButton() {
 
 function SignInForm() {
   const { signIn } = useAuthActions();
-  const [flow, setFlow] = createSignal<AuthFlow>("signUp");
+  const [flow, setFlow] = createSignal<AuthFlow>("signIn");
   const [error, setError] = createSignal<string | null>(null);
   const [isSubmitting, setIsSubmitting] = createSignal(false);
 

@@ -1,6 +1,6 @@
 # Todos
 
-**What:** Per-user TodoMVC list with add, double-click-to-edit, toggle, toggle-all, delete, clear-completed, and All/Active/Completed filtering via URL hash. Sign in with email + password or tap "Continue without an account" to use the `Anonymous` provider; either way you get a real user row and a JWT. All six mutations apply optimistically via `convex-solidjs` `createMutation(...).withOptimisticUpdate`. First-load and error states render via Solid 2's `<Loading>` and `<Errored>` boundaries.
+**What:** Per-user TodoMVC list with add, double-click-to-edit, toggle, toggle-all, delete, clear-completed, and All/Active/Completed filtering via URL hash. Sign-in is the default form, while "Continue without an account" uses the `Anonymous` provider; either way a stored JWT makes the UI available immediately and is cleared if Convex rejects it. All six mutations apply optimistically via `convex-solidjs` `createMutation(...).withOptimisticUpdate`. First-load and error states render via Solid 2's `<Loading>` and `<Errored>` boundaries.
 
 **Where:**
 - [convex/auth.ts](../../convex/auth.ts) — `convexAuth({ providers: [Password, Anonymous] })`.

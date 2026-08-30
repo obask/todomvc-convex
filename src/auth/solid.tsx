@@ -70,10 +70,6 @@ export function ConvexAuthProvider(props: {
   const [isRefreshing, setIsRefreshing] = createSignal(false, {
     ownedWrite: true,
   });
-  const [serverAuthed, setServerAuthed] = createSignal(false, {
-    ownedWrite: true,
-  });
-
   const signInRef =
     api.auth.signIn as unknown as FunctionReference<"action", "public">;
   const signOutRef =
@@ -160,10 +156,13 @@ export function ConvexAuthProvider(props: {
     () => tokenSignal() !== null,
     (hasToken) => {
       if (hasToken) {
-        client.setAuth(fetchAccessToken, (authed) => setServerAuthed(authed));
+        client.setAuth(fetchAccessToken, (authed) => {
+          if (!authed) {
+            setToken({ shouldStore: true, tokens: null });
+          }
+        });
       } else {
         client.setAuth(async () => null);
-        setServerAuthed(false);
       }
     },
   );
@@ -196,9 +195,8 @@ export function ConvexAuthProvider(props: {
   });
 
   const state: AuthState = {
-    isLoading: () =>
-      isHydrating() || (tokenSignal() !== null && !serverAuthed()),
-    isAuthenticated: () => serverAuthed(),
+    isLoading: () => isHydrating() || isRefreshing(),
+    isAuthenticated: () => tokenSignal() !== null,
   };
 
   return (
@@ -254,4 +252,3 @@ export function AuthLoading(props: { children: JSX.Element }) {
   const auth = useConvexAuth();
   return <Show when={auth.isLoading()}>{props.children}</Show>;
 }
-
