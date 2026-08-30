@@ -1,24 +1,21 @@
-// Solid 2.0 port of @convex-dev/auth/react/client. Trimmed: no SSR
-// serverState, no OAuth `?code=` handling, no cross-tab storage sync, no
-// manual mutex fallback (requires navigator.locks), no replaceURL/verbose.
-// Wire protocol matches the React client — same auth:signIn / auth:signOut
-// actions, same JWT/refreshToken storage keys.
+// Preact port of @convex-dev/auth/react/client. Trimmed: no SSR serverState,
+// no OAuth `?code=` handling, no cross-tab storage sync, no manual mutex
+// fallback (requires navigator.locks), no replaceURL/verbose. Wire protocol
+// matches the React client — same auth:signIn / auth:signOut actions, same
+// JWT/refreshToken storage keys.
 
+import { createContext, type ComponentChildren } from "preact";
+import { useContext, useEffect, useMemo, useRef } from "preact/hooks";
 import {
-  Accessor,
-  Show,
-  createContext,
-  createEffect,
-  createSignal,
-  onSettled,
-  useContext,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
+  useSignal,
+  useComputed,
+  type ReadonlySignal,
+} from "@preact/signals";
 import type { ConvexClient } from "convex/browser";
 import type { FunctionReference } from "convex/server";
 import type { Value } from "convex/values";
 import { api } from "../../convex/_generated/api";
-import { ConvexProvider } from "convex-solidjs";
+import { ConvexProvider } from "convex-preact";
 
 const JWT_STORAGE_KEY = "__convexAuthJWT";
 const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
@@ -42,18 +39,20 @@ type AuthActions = {
 };
 
 type AuthState = {
-  isLoading: Accessor<boolean>;
-  isAuthenticated: Accessor<boolean>;
+  isLoading: ReadonlySignal<boolean>;
+  isAuthenticated: ReadonlySignal<boolean>;
 };
 
-const AuthActionsContext = createContext<AuthActions>();
-const AuthStateContext = createContext<AuthState>();
-const AuthTokenContext = createContext<Accessor<string | null>>();
+const AuthActionsContext = createContext<AuthActions | null>(null);
+const AuthStateContext = createContext<AuthState | null>(null);
+const AuthTokenContext = createContext<ReadonlySignal<string | null> | null>(
+  null,
+);
 
 export function ConvexAuthProvider(props: {
   client: ConvexClient;
   storageNamespace?: string;
-  children: JSX.Element;
+  children: ComponentChildren;
 }) {
   const client = props.client;
   const ns = (props.storageNamespace ?? client.client.url).replace(
@@ -62,17 +61,11 @@ export function ConvexAuthProvider(props: {
   );
   const k = (key: string) => `${key}_${ns}`;
 
-  const tokenRef: { current: string | null } = { current: null };
-  const [tokenSignal, setTokenSignal] = createSignal<string | null>(null);
-  const [isHydrating, setIsHydrating] = createSignal(true, {
-    ownedWrite: true,
-  });
-  const [isRefreshing, setIsRefreshing] = createSignal(false, {
-    ownedWrite: true,
-  });
-  const [serverAuthed, setServerAuthed] = createSignal(false, {
-    ownedWrite: true,
-  });
+  const tokenRef = useRef<string | null>(null);
+  const tokenSignal = useSignal<string | null>(null);
+  const isHydrating = useSignal(true);
+  const isRefreshing = useSignal(false);
+  const serverAuthed = useSignal(false);
 
   const signInRef =
     api.auth.signIn as unknown as FunctionReference<"action", "public">;
@@ -86,7 +79,7 @@ export function ConvexAuthProvider(props: {
         localStorage.removeItem(k(JWT_STORAGE_KEY));
         localStorage.removeItem(k(REFRESH_TOKEN_STORAGE_KEY));
       }
-      setTokenSignal(null);
+      tokenSignal.value = null;
     } else {
       tokenRef.current = args.tokens.token;
       if (args.shouldStore) {
@@ -96,7 +89,7 @@ export function ConvexAuthProvider(props: {
           args.tokens.refreshToken,
         );
       }
-      setTokenSignal(args.tokens.token);
+      tokenSignal.value = args.tokens.token;
     }
   };
 
@@ -114,7 +107,7 @@ export function ConvexAuthProvider(props: {
         if (after !== before) return after;
         const refreshToken = localStorage.getItem(k(REFRESH_TOKEN_STORAGE_KEY));
         if (!refreshToken) return null;
-        setIsRefreshing(true);
+        isRefreshing.value = true;
         try {
           const result = (await client.action(signInRef, {
             refreshToken,
@@ -123,7 +116,7 @@ export function ConvexAuthProvider(props: {
         } catch {
           setToken({ shouldStore: true, tokens: null });
         } finally {
-          setIsRefreshing(false);
+          isRefreshing.value = false;
         }
         return tokenRef.current;
       },
@@ -156,34 +149,31 @@ export function ConvexAuthProvider(props: {
   };
 
   // Wire client.setAuth whenever a token appears/disappears.
-  createEffect(
-    () => tokenSignal() !== null,
-    (hasToken) => {
-      if (hasToken) {
-        client.setAuth(fetchAccessToken, (authed) => setServerAuthed(authed));
-      } else {
-        client.setAuth(async () => null);
-        setServerAuthed(false);
-      }
-    },
-  );
+  useEffect(() => {
+    const hasToken = tokenSignal.value !== null;
+    if (hasToken) {
+      client.setAuth(fetchAccessToken, (authed) => {
+        serverAuthed.value = authed;
+      });
+    } else {
+      client.setAuth(async () => null);
+      serverAuthed.value = false;
+    }
+  }, [tokenSignal.value]);
 
   // beforeunload guard while a token refresh is in flight.
-  createEffect(
-    () => isRefreshing(),
-    (refreshing) => {
-      if (!refreshing) return;
-      const listener = (e: BeforeUnloadEvent) => {
-        e.preventDefault();
-        e.returnValue = true;
-      };
-      window.addEventListener("beforeunload", listener);
-      return () => window.removeEventListener("beforeunload", listener);
-    },
-  );
+  useEffect(() => {
+    if (!isRefreshing.value) return;
+    const listener = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = true;
+    };
+    window.addEventListener("beforeunload", listener);
+    return () => window.removeEventListener("beforeunload", listener);
+  }, [isRefreshing.value]);
 
   // Hydrate from storage once on mount.
-  onSettled(() => {
+  useEffect(() => {
     const stored = localStorage.getItem(k(JWT_STORAGE_KEY));
     if (stored !== null) {
       setToken({
@@ -191,25 +181,29 @@ export function ConvexAuthProvider(props: {
         tokens: { token: stored, refreshToken: "" },
       });
     }
-    setIsHydrating(false);
-    return () => {};
-  });
+    isHydrating.value = false;
+  }, []);
 
-  const state: AuthState = {
-    isLoading: () =>
-      isHydrating() || (tokenSignal() !== null && !serverAuthed()),
-    isAuthenticated: () => serverAuthed(),
-  };
+  const isLoading = useComputed(
+    () => isHydrating.value || (tokenSignal.value !== null && !serverAuthed.value),
+  );
+  const isAuthenticated = useComputed(() => serverAuthed.value);
+  const state: AuthState = useMemo(
+    () => ({ isLoading, isAuthenticated }),
+    [isLoading, isAuthenticated],
+  );
+  const actions: AuthActions = useMemo(() => ({ signIn, signOut }), []);
+  const tokenReadonly: ReadonlySignal<string | null> = tokenSignal;
 
   return (
     <ConvexProvider client={client}>
-      <AuthStateContext value={state}>
-        <AuthActionsContext value={{ signIn, signOut }}>
-          <AuthTokenContext value={tokenSignal}>
+      <AuthStateContext.Provider value={state}>
+        <AuthActionsContext.Provider value={actions}>
+          <AuthTokenContext.Provider value={tokenReadonly}>
             {props.children}
-          </AuthTokenContext>
-        </AuthActionsContext>
-      </AuthStateContext>
+          </AuthTokenContext.Provider>
+        </AuthActionsContext.Provider>
+      </AuthStateContext.Provider>
     </ConvexProvider>
   );
 }
@@ -226,32 +220,27 @@ export function useAuthActions(): AuthActions {
   return actions;
 }
 
-export function useAuthToken(): Accessor<string | null> {
+export function useAuthToken(): ReadonlySignal<string | null> {
   const token = useContext(AuthTokenContext);
   if (!token) throw new Error("Missing ConvexAuthProvider");
   return token;
 }
 
-export function Authenticated(props: { children: JSX.Element }) {
+export function Authenticated(props: { children: ComponentChildren }) {
   const auth = useConvexAuth();
-  return (
-    <Show when={!auth.isLoading() && auth.isAuthenticated()}>
-      {props.children}
-    </Show>
-  );
+  return !auth.isLoading.value && auth.isAuthenticated.value ? (
+    <>{props.children}</>
+  ) : null;
 }
 
-export function Unauthenticated(props: { children: JSX.Element }) {
+export function Unauthenticated(props: { children: ComponentChildren }) {
   const auth = useConvexAuth();
-  return (
-    <Show when={!auth.isLoading() && !auth.isAuthenticated()}>
-      {props.children}
-    </Show>
-  );
+  return !auth.isLoading.value && !auth.isAuthenticated.value ? (
+    <>{props.children}</>
+  ) : null;
 }
 
-export function AuthLoading(props: { children: JSX.Element }) {
+export function AuthLoading(props: { children: ComponentChildren }) {
   const auth = useConvexAuth();
-  return <Show when={auth.isLoading()}>{props.children}</Show>;
+  return auth.isLoading.value ? <>{props.children}</> : null;
 }
-

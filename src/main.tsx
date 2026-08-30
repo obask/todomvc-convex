@@ -1,8 +1,8 @@
-import { render } from "@solidjs/web";
+import { render } from "preact";
 import { ConvexClient } from "convex/browser";
 import "./index.css";
 import App from "./App";
-import { ConvexAuthProvider } from "./auth/solid";
+import { ConvexAuthProvider } from "./auth/preact";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
 
@@ -13,10 +13,8 @@ if (!convexUrl) {
 const convex = new ConvexClient(convexUrl);
 
 render(
-  () => (
-    <ConvexAuthProvider client={convex}>
-      <App />
-    </ConvexAuthProvider>
-  ),
+  <ConvexAuthProvider client={convex}>
+    <App />
+  </ConvexAuthProvider>,
   document.getElementById("root")!,
 );

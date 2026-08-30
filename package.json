@@ -1,5 +1,5 @@
 {
-  "name": "todomvc-vite--convex-solid",
+  "name": "todomvc-vite--convex-preact",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,14 +12,15 @@
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.92",
-    "@solidjs/web": "2.0.0-beta.13",
+    "@preact/signals": "^2.0.0",
     "convex": "^1.39.1",
-    "convex-solidjs": "github:obask/convex-solidjs#dist",
-    "solid-js": "2.0.0-beta.13"
+    "convex-preact": "github:obask/convex-preact#dist",
+    "preact": "^10.24.0"
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^2.0.0",
     "@eslint/js": "^10.0.1",
+    "@preact/preset-vite": "^2.10.0",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^25.8.0",
     "dotenv": "^17.4.2",
@@ -29,8 +30,7 @@
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.3",
-    "vite": "^8.0.13",
-    "vite-plugin-solid": "3.0.0-next.5"
+    "vite": "^8.0.13"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

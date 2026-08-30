@@ -1,15 +1,15 @@
-# TodoMVC with Convex + Solid
+# TodoMVC with Convex + Preact
 
-This is a [Convex](https://convex.dev/) TodoMVC app using Solid 2 for the frontend.
+This is a [Convex](https://convex.dev/) TodoMVC app using Preact + `@preact/signals` for the frontend.
 
 The app uses:
 
 - Convex for the database, server functions, and authentication.
-- [Solid](https://www.solidjs.com/) 2 for the frontend.
+- [Preact](https://preactjs.com/) + [`@preact/signals`](https://preactjs.com/guide/v10/signals/) for the frontend.
 - [Vite](https://vite.dev/) for the web build.
 - [Tailwind CSS](https://tailwindcss.com/) for styling.
 
-The Solid UI talks to Convex through [`convex-solidjs`](https://github.com/obask/convex-solidjs).
+The Preact UI talks to Convex through [`convex-preact`](https://github.com/obask/convex-preact), pinned via `https://github.com/obask/convex-preact.git#dist`.
 Todos are scoped to the authenticated Convex Auth user in `convex/todos.ts`.
 Users can sign in with email and password or use the anonymous provider through the
 "Continue without an account" button.
@@ -29,7 +29,7 @@ Follow the prompts from the Convex CLI if this is your first local deployment.
 Useful follow-up docs:
 
 - [Todo feature notes](docs/features/todos.md)
-- [Solid + Convex adapter notes](docs/solid-convex-adapter.md)
+- [Preact + Convex adapter notes](docs/preact-convex-adapter.md)
 - [Vercel deployment notes](docs/deploy.md)
 - [Convex Auth docs](https://labs.convex.dev/auth/)
 

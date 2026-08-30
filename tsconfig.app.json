@@ -13,8 +13,8 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "preserve",
-    "jsxImportSource": "@solidjs/web",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
 
     /* Linting */
     "strict": true,
