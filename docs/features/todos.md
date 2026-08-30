@@ -4,5 +4,5 @@
 
 **Where:**
 - [convex/schema.ts](../../convex/schema.ts) — `todos` table with `by_user` and `by_user_and_completed` indexes.
-- [convex/todos.ts](../../convex/todos.ts) — `list`, `create`, `setCompleted`, `rename`, `remove`, `toggleAll`, `clearCompleted`. All scope by `ctx.auth.getUserIdentity().subject` (the Better Auth user id); never accept a userId arg.
+- [convex/todos.ts](../../convex/todos.ts) — `list`, `create`, `setCompleted`, `rename`, `remove`, `toggleAll`, `clearCompleted`. All scope by `ctx.auth.getUserIdentity().subject` (the `users._id` carried in the JWT signed by [convex/auth.ts](../../convex/auth.ts)); never accept a userId arg.
 - [src/App.tsx](../../src/App.tsx) — `TodoApp`, `NewTodoInput`, `TodoItem`, `Footer`, `useHashFilter`. Each mutation has a matching `withOptimisticUpdate` patcher over the `api.todos.list` cache.

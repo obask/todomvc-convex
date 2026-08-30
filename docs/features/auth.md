@@ -2,9 +2,10 @@
 
 **What:** Email + password sign-up / sign-in, powered by the
 [`convex-simple-auth`](https://github.com/obask/convex-simple-auth) library.
-Server-side helpers (PBKDF2 password hashing, ES256 JWT signing, users table
-schema) are imported from `convex-simple-auth/server`; the React `useAuth`
-hook + `tokenStore` come from `convex-simple-auth/react`. The lib's
+Server-side auth actions and user functions are re-exported from
+`convex-simple-auth/auth` and `convex-simple-auth/users`; the users table and
+JWKS helper come from `convex-simple-auth/server`. The React `useAuth` hook and
+`tokenStore` come from `convex-simple-auth/react`. The library's
 `convex-simple-auth-keys` bin generates the keypair, sets `JWT_PRIVATE_KEY`
 on the Convex deployment, and splices the public JWK into
 `convex/auth.config.ts`. Convex verifies each JWT against the inline JWKS
@@ -12,21 +13,18 @@ data URI in `auth.config.ts` — no HTTP route.
 
 **Where:**
 
-- [convex/auth.ts](../../convex/auth.ts) — `signUp` / `signIn` actions, thin
-  wrappers around `hashPassword`, `verifyPassword`, `signJwt`,
-  `normalizeEmail` from `convex-simple-auth/server`.
-- [convex/users.ts](../../convex/users.ts) — internal `getByEmail` query +
-  `create` mutation (fields optional to match `authTables`).
-- [convex/auth.config.ts](../../convex/auth.config.ts) — `customJwt` provider
-  with the public JWK inlined as a `data:` URI between `// JWKS:BEGIN` /
-  `// JWKS:END` markers (rewritten by `pnpm auth:keys`).
+- [convex/auth.ts](../../convex/auth.ts) — re-exports the package's `signUp` and
+  `signIn` actions.
+- [convex/users.ts](../../convex/users.ts) — re-exports the package's internal
+  `getByEmail` query and `create` mutation.
+- [convex/auth.config.ts](../../convex/auth.config.ts) — configures the package's
+  `jwksProvider` with the public JWK between `// JWKS:BEGIN` / `// JWKS:END`
+  markers (rewritten by `pnpm auth:keys`).
 - [convex/schema.ts](../../convex/schema.ts) — spreads `authTables` (the
   `users` table) from `convex-simple-auth/server` alongside the `todos`
   table.
-- [src/lib/auth.ts](../../src/lib/auth.ts) — single-line re-export of
-  `tokenStore` + `useAuth` from `convex-simple-auth/react`.
-- [src/main.tsx](../../src/main.tsx) — wires `ConvexProviderWithAuth` to
-  `useAuth`.
+- [src/main.tsx](../../src/main.tsx) — imports `useAuth` directly and wires it
+  to `ConvexProviderWithAuth`.
 - [src/App.tsx](../../src/App.tsx) — `SignInForm` calls
   `useAction(api.auth.signIn|signUp)` then `tokenStore.set(token)`;
   `SignOutButton` calls `tokenStore.clear()`.

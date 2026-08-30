@@ -3,12 +3,13 @@
 import {
   Authenticated,
   Unauthenticated,
+  useAction,
   useConvexAuth,
   useMutation,
   useQuery,
 } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { authClient } from "./lib/auth-client";
+import { tokenStore } from "./lib/auth";
 import {
   FormEvent,
   KeyboardEvent,
@@ -23,10 +24,10 @@ type Filter = "all" | "active" | "completed";
 type AuthFlow = "signIn" | "signUp";
 
 function getAuthErrorMessage(error: unknown, flow: AuthFlow): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message) {
-    return message;
-  }
+  const raw = error instanceof Error ? error.message : String(error);
+  const match = raw.match(/Error: ([^\n]+)/);
+  const clean = (match ? match[1] : raw).trim();
+  if (clean) return clean;
   return flow === "signIn"
     ? "Sign in failed. Check your email and password and try again."
     : "Sign up failed. Check your email and password and try again.";
@@ -79,7 +80,7 @@ function SignOutButton() {
   return (
     <button
       className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-3 py-1 text-sm hover:bg-slate-300 dark:hover:bg-slate-700"
-      onClick={() => void authClient.signOut()}
+      onClick={() => tokenStore.clear()}
     >
       Sign out
     </button>
@@ -87,6 +88,8 @@ function SignOutButton() {
 }
 
 function SignInForm() {
+  const signIn = useAction(api.auth.signIn);
+  const signUp = useAction(api.auth.signUp);
   const [flow, setFlow] = useState<AuthFlow>("signIn");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,24 +103,17 @@ function SignInForm() {
         onSubmit={(e: FormEvent<HTMLFormElement>) => {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
-          const email = String(formData.get("email") ?? "");
-          const password = String(formData.get("password") ?? "");
+          const emailEntry = formData.get("email");
+          const passwordEntry = formData.get("password");
+          const email = typeof emailEntry === "string" ? emailEntry : "";
+          const password =
+            typeof passwordEntry === "string" ? passwordEntry : "";
           setError(null);
           setIsSubmitting(true);
-          const action =
-            flow === "signIn"
-              ? authClient.signIn.email({ email, password })
-              : authClient.signUp.email({ email, password, name: email });
-          void action
-            .then((result) => {
-              if (result.error) {
-                setError(
-                  getAuthErrorMessage(
-                    new Error(result.error.message ?? "Auth failed"),
-                    flow,
-                  ),
-                );
-              }
+          const action = flow === "signIn" ? signIn : signUp;
+          void action({ email, password })
+            .then((token) => {
+              tokenStore.set(token);
             })
             .catch((err: unknown) => {
               setError(getAuthErrorMessage(err, flow));

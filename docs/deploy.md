@@ -26,40 +26,38 @@ Add `CONVEX_DEPLOY_KEY` twice, scoped to different environments:
 | `CONVEX_DEPLOY_KEY` | production deploy key from Convex | **Production** only |
 | `CONVEX_DEPLOY_KEY` | preview deploy key from Convex | **Preview** only |
 
-You also need `VITE_CONVEX_SITE_URL` (the Convex `*.convex.site` HTTP-actions URL for that deployment) so the Better Auth client can reach the auth routes. `VITE_CONVEX_URL` is injected automatically by `convex deploy --cmd`.
+No frontend auth env vars are needed. `VITE_CONVEX_URL` is injected automatically by `convex deploy --cmd`. The JWT machinery is entirely server-side.
 
-## Setting Better Auth variables on Convex
+## Setting auth variables on Convex
 
-Each Convex deployment that serves auth needs:
+Each Convex deployment that serves auth needs an ES256 private key. The matching public JWK is **committed to source** in `convex/auth.config.ts` (between the `// JWKS:BEGIN` / `// JWKS:END` markers) — it's not secret. The setup script handles both halves in one command:
 
 | Variable | Where | Notes |
 |---|---|---|
-| `BETTER_AUTH_SECRET` | Convex env | 32-byte random string. Generate with `openssl rand -base64 32`. |
-| `SITE_URL` | Convex env | Public origin of the deployed frontend (e.g. `https://my-app.vercel.app`). Used as a trusted origin and for cross-domain cookies. |
+| `JWT_PRIVATE_KEY` | Convex env | PEM-encoded ES256 private key (PKCS8). Set by `pnpm auth:keys`. |
+| Public JWK | `convex/auth.config.ts` (in repo) | Spliced in by `pnpm auth:keys`. Commit it. |
 
-Set them with the CLI against the target deployment:
+Run `pnpm auth:keys` against each deployment that needs auth — pass `-- --prod`, `-- --deployment <name>`, or `-- --preview-name <branch>` to target. **Re-running rewrites `auth.config.ts`** — commit the resulting change.
 
-```bash
-pnpm exec convex env set BETTER_AUTH_SECRET=$(openssl rand -base64 32)
-pnpm exec convex env set SITE_URL https://my-app.vercel.app
-```
+For Vercel preview deployments, configure `JWT_PRIVATE_KEY` as a **Convex project default environment variable for preview deployments**. The public JWK in `auth.config.ts` is already in source and ships with each preview's build, so previews automatically pick up whatever key pair you've committed. Re-run `pnpm auth:keys` only when you want to actively rotate.
 
-For Vercel preview deployments, configure these as **Convex project default environment variables for preview deployments** before Vercel creates them — Convex copies the defaults into each new preview deployment at creation time. Use `SITE_URL` set to a placeholder if you need a single default; otherwise set it per preview after Vercel publishes the URL.
-
-Existing preview deployments are not updated when defaults change; recreate them or set values directly on the named preview deployment:
+Existing preview deployments are not updated when defaults change; recreate them or set the private key directly:
 
 ```bash
-pnpm exec convex env --preview-name '<branch-name>' set SITE_URL https://<branch>.vercel.app
+pnpm auth:keys -- --preview-name '<branch-name>'
 ```
+
+Then commit the updated `convex/auth.config.ts` if rotation was intentional.
 
 ## How preview deployments work
 
 Each Vercel preview deployment (one per PR / branch push) invokes the build with the **preview** `CONVEX_DEPLOY_KEY`. Convex provisions a fresh preview backend named after the git branch, deploys the current schema and functions to it, and `VITE_CONVEX_URL` in the resulting bundle points at *that* preview backend — never at production.
 
-Authenticated users on a preview URL therefore sign up against the preview backend's empty Better Auth tables; production data stays untouched. Convex garbage-collects preview deployments after the associated branch is deleted.
+Authenticated users on a preview URL therefore sign up against the preview backend's empty `users` table; production data stays untouched. Convex garbage-collects preview deployments after the associated branch is deleted.
 
 ## Sanity checks
 
 - `pnpm build` succeeds locally.
-- After the first Vercel deploy: open the deployed URL, sign up, add a todo — it should round-trip to Convex (look for the request to `*.convex.cloud` in DevTools).
+- `convex/auth.config.ts` contains a real JWK between the `JWKS:BEGIN` / `JWKS:END` markers (not the placeholder empty strings).
+- After the first Vercel deploy: open the deployed URL, sign up, add a todo — it should round-trip to Convex (look for the request to `*.convex.cloud` in DevTools, and a `convex_jwt` entry in `localStorage`). Paste the JWT into jwt.io and check that header `kid` matches the `kid` in `auth.config.ts` (`"default"`).
 - Open a PR → the preview URL works and uses its own Convex backend (check `VITE_CONVEX_URL` in the page source or by inspecting the WebSocket URL).

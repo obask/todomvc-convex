@@ -1,20 +1,17 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexReactClient } from "convex/react";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
-import { authClient } from "./lib/auth-client";
+import { ConvexProviderWithAuth } from "convex/react";
+import { useAuth } from "./lib/auth";
 import "./index.css";
 import App from "./App.tsx";
 
-const convex = new ConvexReactClient(
-  import.meta.env.VITE_CONVEX_URL as string,
-  { expectAuth: true },
-);
+const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+    <ConvexProviderWithAuth client={convex} useAuth={useAuth}>
       <App />
-    </ConvexBetterAuthProvider>
+    </ConvexProviderWithAuth>
   </StrictMode>,
 );
